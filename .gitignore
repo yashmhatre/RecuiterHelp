@@ -45,3 +45,6 @@ mlflow.db
 .idea/
 .DS_Store
 Thumbs.db
+
+# Prototype: SQLite database and uploaded resumes are real candidate data.
+prototype/data/
