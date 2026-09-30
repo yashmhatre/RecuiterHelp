@@ -18,8 +18,9 @@ and real string literals are considered.
 Deliberate exception
 --------------------
 A line carrying the marker ``send-guard: allow`` is skipped. P0-05's scope-rejection code needs
-it, since refusing a send scope means naming it. Every use has to be visible in review, which is
-the point: the guard is not silently suppressible across a file or the whole run.
+it, since refusing a send scope means naming it. The marker is per-line and cannot be applied
+to a file or a run, so `grep -rn "send-guard: allow"` always lists every exception. That is the
+point: exceptions stay countable instead of accumulating behind a file-level ignore.
 """
 
 from __future__ import annotations
@@ -225,7 +226,7 @@ def test_the_allow_marker_is_respected_for_scope_rejection():
 
 
 def test_the_allow_marker_only_covers_its_own_line():
-    """Not suppressible file-wide, so every exception stays visible in review."""
+    """Not suppressible file-wide, so grep always finds every exception."""
     snippet = (
         'ok = ["Mail.Send"]  # send-guard: allow\n'
         "provider.send(draft)\n"

@@ -1,8 +1,13 @@
 # Contracts (frozen for v1)
 
 Every ticket is built against this file, **not** against another ticket's output. That is what
-makes the tickets independent: two people can work on `classify.py` and `match.py` at the same
-time, in different clones, and the pieces fit when both land.
+makes the tickets independent: `match.py` can be finished before `classify.py` exists, and the
+pieces fit when both land.
+
+This is a one-person project, so the payoff is not parallelism. It is that no ticket is ever
+blocked on a half-built neighbour, each one is finishable and verifiable in a sitting without
+holding the whole system in your head, and picking the work back up after a fortnight away
+means reading one ticket rather than re-deriving the design.
 
 Rules:
 
@@ -10,8 +15,9 @@ Rules:
    ticket, that something is written down here first.
 2. A ticket never imports code owned by another ticket. It imports from `contracts.py`
    (types only) and consumes/produces the shapes below.
-3. Changing a contract is its own change: a PR that edits this file, flagged in every open
-   ticket it touches. Do not silently widen a shape inside a feature ticket.
+3. Changing a contract is its own commit, touching this file and nothing else, and noted on
+   every open ticket it affects. Do not silently widen a shape inside a feature ticket — the
+   point is that `git log docs/CONTRACTS.md` lists every time the vocabulary moved.
 4. Every ticket ships its own fixtures built from the shapes here. No ticket waits for real
    data, a real mailbox, or a real database to be testable.
 

@@ -17,7 +17,7 @@ dependencies = [
     "jsonschema==4.23.0",
 ]
 
-# Extras are grouped by ticket, so someone working on resume parsing does not install MLflow.
+# Extras are grouped by ticket, so working on resume parsing does not mean installing MLflow.
 # Each group is pinned. See docs/TICKETS.md for which ticket owns what.
 [project.optional-dependencies]
 # P0-02 Ollama client, P2-06 classify, P2-08 re-rank

@@ -17,8 +17,8 @@ Without a low-friction way to record that, the pilot produces an opinion instead
 ## Scope
 **Do**
 - `feedback_cli.py`: list drafts awaiting a verdict, record `sent_as_is` / `edited` / `discarded`,
-  a `wrong_match` flag, and free-text notes. Under ten seconds per draft, or the reviewer will
-  stop using it.
+  a `wrong_match` flag, and free-text notes. Under ten seconds per draft, or you will stop
+  using it halfway through the pilot and the numbers will be worthless.
 - Where a draft was edited, capture the edited text so the diff against the generated draft can be
   read later — that diff is the most useful signal the pilot produces.
 - `docs/pilot-protocol.md`: the daily routine, what counts as a "minor edit" (the plan's 60%
@@ -38,9 +38,9 @@ throwaway database seeded straight from `docs/schema.reference.sql`.
 - [ ] All three outcomes and the `wrong_match` flag recordable, with notes
 - [ ] Edited text captured so a diff against the original draft can be produced
 - [ ] Recording a verdict twice for one draft updates rather than duplicates
-- [ ] "Minor edit" is defined concretely enough that two reviewers agree
+- [ ] "Minor edit" is defined concretely enough to give the same verdict on a re-read a week later
 - [ ] The escalation rule for a wrong-candidate resume is written and agreed
-- [ ] Reviewer records a real day of drafts in under ten seconds each
+- [ ] A real day of drafts recorded, under ten seconds each
 
 ## Done when
 `pytest tests/test_feedback_cli.py` passes and one real review day has been recorded.

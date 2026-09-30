@@ -60,7 +60,7 @@ Decisions:
   scopes. A text scan would fire on all of that or be watered down until it caught nothing. The
   guard walks the AST for send-shaped calls, definitions and string literals, so only real code
   counts. A single line may carry `# send-guard: allow`, which is not suppressible file-wide, so
-  every exception stays visible in review.
+  `grep -rn "send-guard: allow"` always lists every exception.
 - **Error types live in `base.py`**, not in each provider: `ProviderError`,
   `TransientProviderError`, `CursorExpiredError`, `AuthorisationError`. Not in the original scope,
   but both P2-02 and P2-03 need to signal a rate limit and a stale cursor, and if base does not

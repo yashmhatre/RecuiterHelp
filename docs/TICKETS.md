@@ -4,6 +4,10 @@
 
 ## What "independent" means here
 
+One person is building this. Independence is therefore not about working in parallel — it is
+about never being blocked on a half-built neighbour, and being able to pick any ticket up cold
+after time away by reading one file.
+
 No ticket waits on another ticket's code. It is achieved three ways, and every ticket states
 which ones it uses:
 
@@ -19,6 +23,13 @@ which ones it uses:
 Where a ticket would otherwise need a file another ticket owns (`contracts.py`,
 `embedding_text.py`), the file's full content is in the contract doc. Whoever needs it first
 creates it; the content is identical either way, so the merge is a no-op.
+
+## Effort
+
+Estimates sum to **44 days of focused work**; 4.5 are done, so roughly **39.5 days remain**. At
+one person full time that is about eight weeks, and Plan.md's "weeks 1 to 7" assumed either more
+hands or more optimism. Part time, scale accordingly — and note that P1-05's three days are
+hand-labelling, which does not compress.
 
 ## Sequencing
 

@@ -12,8 +12,9 @@
 
 ## Context
 The only ticket allowed to change threshold values and prompt text. Keeping that permission in one
-place means two people tuning at once cannot silently undo each other, and every number in
-`settings.yaml` has a recorded reason.
+place means every number in `settings.yaml` has exactly one recorded reason, and a tuning run
+that needs a code change becomes a separate ticket instead of drifting into the stage it
+touches.
 
 ## Scope
 **Do**

@@ -21,6 +21,21 @@ Workflow::
 Exit code 0 means every gated field agrees at or above the threshold. Exit code 1 means the
 label definitions need tightening before labelling continues.
 
+Solo project: both passes are the same person
+---------------------------------------------
+This is test-retest reliability, not inter-rater. It is **weaker evidence** than two independent
+labellers would give, because you remember your own reasoning and you repeat your own systematic
+mistakes, so self-agreement runs systematically higher than agreement between two people.
+
+It still catches the thing worth catching: a definition so ambiguous that it cannot be applied
+consistently even by its author. But read a pass as "not obviously broken", not as "the ground
+truth is sound". Two practical consequences:
+
+- **Leave at least a day between passes.** The same afternoon mostly measures short-term memory.
+- **A pass does not rule out a systematic error.** If every recruiter-ish marketing email gets
+  labelled `is_recruiter=true` both times, agreement is 100% and the label is still wrong. Only
+  the Phase 3 eval against the model catches that, by surfacing the emails it disagrees with.
+
 What counts as a disagreement
 -----------------------------
 **Gated fields** are the ones with accuracy targets in the plan, compared exactly:
@@ -91,7 +106,7 @@ def select_slice(ids: list[str], size: int = DEFAULT_SLICE_SIZE, seed: str = "p1
     favour whatever was labelled first — labelling order tends to correlate with how easy an
     email was, and an agreement check run only on easy emails is worthless.
 
-    Deterministic for a given id set and seed, so two people get the same slice.
+    Deterministic for a given id set and seed, so the slice is reproducible across runs.
     """
     if size < 1:
         raise ValueError(f"size must be at least 1, got {size}")

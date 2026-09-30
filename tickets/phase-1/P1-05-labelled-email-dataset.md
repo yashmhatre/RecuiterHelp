@@ -32,9 +32,12 @@ else. Labelling is the bottleneck, not the code.
   - 50-80 non-recruiter: newsletters, job alerts, auto-replies, vendor spam, own sent mail
   - 20-30 hard cases: vague one-liners, in-house HR, agency spam that reads genuine,
     forwarded requirements, threads where only the third reply carries the requirement
-- Label a 30-email slice **twice** and report the disagreement rate. If two passes disagree more
-  than 5% of the time, a 95% accuracy target is not measurable — fix the label definitions first
-  and say so in the PR.
+- Label a 30-email slice **twice** and report the disagreement rate. If the two passes disagree
+  more than 5% of the time, a 95% accuracy target is not measurable — fix the label definitions
+  before labelling the rest.
+  Both passes are you, so this is test-retest, not inter-rater: weaker evidence, because you
+  repeat your own reasoning and your own systematic mistakes. Leave at least a day between
+  passes, and read a pass as "not obviously broken" rather than "the ground truth is sound".
 - `labels.example.jsonl`: ~10 synthetic records, no real senders, for other tickets' tests.
 
 **Do not**
