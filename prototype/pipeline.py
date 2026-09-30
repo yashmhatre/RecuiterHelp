@@ -631,7 +631,16 @@ def validate_draft(draft: dict[str, Any], email: RawEmail, profiles: list[dict])
                 "detail": f"missing or empty: {attachment['file_path']}",
             })
 
-    haystack = f"{draft['subject']}\n{draft['body_text']}".lower()
+    # Only what we wrote. A reply subject is "Re: " plus the sender's own words, so a rate in
+    # their subject line ("Senior Data Engineer - Remote - $55/hr") came back through the Re:
+    # and failed an otherwise good draft. The rule exists to stop us stating money, not to stop
+    # us quoting their subject line back at them.
+    original_subject = re.sub(r"^\s*re\s*:\s*", "", email.subject or "", flags=re.IGNORECASE).strip()
+    our_subject = draft["subject"]
+    if original_subject and original_subject in our_subject:
+        our_subject = our_subject.replace(original_subject, " ")
+
+    haystack = f"{our_subject}\n{draft['body_text']}".lower()
     for pattern in _SALARY_PATTERNS:
         found = re.search(pattern, haystack)
         if found:

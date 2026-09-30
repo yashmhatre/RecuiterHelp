@@ -539,3 +539,82 @@ def test_a_full_length_professional_summary_survives_intact():
 
     assert "GitHub Actions" in summary, "the middle of the summary was truncated away"
     assert summary.rstrip().endswith("."), f"cut mid-sentence: {summary[-40:]!r}"
+
+
+# ---------------------------------------------------------------------------
+# Salary detection
+# ---------------------------------------------------------------------------
+
+#: A real recruiter subject line. The rate is theirs, and a reply carries it back in the "Re: ".
+RATE_IN_SUBJECT = "Requirement - Senior Data Engineer - Remote - $55/hr"
+
+
+def _draft_for(source, resume_path, body, subject=None):
+    return {
+        "to": [source.from_email],
+        "subject": subject or f"Re: {source.subject}",
+        "body_text": body,
+        "in_reply_to_message_id": source.provider_message_id,
+        "thread_id": source.thread_id,
+        "attachments": [{
+            "profile_id": 1, "candidate_id": 1, "file_path": str(resume_path),
+            "filename": "m.pdf", "candidate_name": "Asha Menon",
+        }],
+        "profiles_used": [1], "dropped": [],
+    }
+
+
+GOOD_BODY = "Hi,\n\n- Asha Menon - Senior Python Engineer: 7 yrs; python; Pune\n\nResumes are attached."
+
+
+def test_their_rate_quoted_back_in_the_subject_is_not_a_salary_disclosure(profiles):
+    """Failed a good draft on real mail. The rule stops us stating money, not us quoting a
+    subject line back at the person who wrote it."""
+    source = email(GOOD_BODY, subject=RATE_IN_SUBJECT)
+
+    report = validate_draft(_draft_for(source, profiles[0]["file_path"], GOOD_BODY), source, profiles)
+
+    assert not [i for i in report["issues"] if i["check"] == "no_salary_figures"], report["issues"]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Expected CTC is 24 LPA.",
+        "Her current CTC is 18 LPA.",
+        "We can offer $90k.",
+        "The package is Rs 12,00,000 per annum.",
+        "Salary: 95000",
+    ],
+)
+def test_a_salary_figure_we_wrote_is_still_caught(profiles, line: str):
+    source = email(GOOD_BODY, subject="Data Engineer")
+
+    report = validate_draft(
+        _draft_for(source, profiles[0]["file_path"], GOOD_BODY + "\n" + line), source, profiles
+    )
+
+    assert [i for i in report["issues"] if i["check"] == "no_salary_figures"], f"missed: {line!r}"
+
+
+def test_a_figure_in_their_subject_does_not_excuse_the_same_figure_in_our_body(profiles):
+    """Stripping the quoted subject must not create a hole in the body check."""
+    source = email(GOOD_BODY, subject="Role - $90k")
+
+    report = validate_draft(
+        _draft_for(source, profiles[0]["file_path"], GOOD_BODY + "\nWe can offer $90k."),
+        source, profiles,
+    )
+
+    assert [i for i in report["issues"] if i["check"] == "no_salary_figures"]
+
+
+def test_a_salary_we_add_to_the_subject_is_caught(profiles):
+    source = email(GOOD_BODY, subject="Data Engineer")
+
+    report = validate_draft(
+        _draft_for(source, profiles[0]["file_path"], GOOD_BODY, subject="Re: Data Engineer - 24 LPA"),
+        source, profiles,
+    )
+
+    assert [i for i in report["issues"] if i["check"] == "no_salary_figures"]
