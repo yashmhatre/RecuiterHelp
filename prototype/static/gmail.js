@@ -51,18 +51,25 @@ $("connectBtn").addEventListener("click", async () => {
   const btn = $("connectBtn");
   const notice = $("gmailNotice");
   btn.disabled = true;
-  btn.textContent = "Check your browser…";
-  notice.className = "notice ok";
-  notice.textContent =
-    "A Google sign-in tab should have opened. Approve access there, then come back.";
+  btn.textContent = "Opening Google…";
+
   try {
-    const res = await fetch("/api/gmail/connect", { method: "POST" });
+    const res = await fetch("/api/gmail/auth-url");
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "sign-in failed");
+    if (!res.ok) throw new Error(data.detail || "could not start sign-in");
+
+    // Opened from a click, so the popup blocker allows it, and Google redirects back into
+    // this app rather than into a throwaway local server.
+    const tab = window.open(data.url, "_blank");
     notice.className = "notice ok";
-    notice.textContent = `Connected to ${data.address}.`;
-    await window.refreshGmail = refreshGmail;
-refreshGmail();
+    notice.innerHTML = tab
+      ? 'Approve access in the Google tab. You will see <b>"Google hasn't verified this app"</b> ' +
+        '— that is expected for your own project: click <b>Advanced</b>, then ' +
+        '<b>Go to (your app)</b>. This page updates by itself once you are done.'
+      : `Your browser blocked the popup. <a href="${data.url}" target="_blank">Open the Google sign-in here</a>.`;
+
+    btn.textContent = "Waiting for Google…";
+    await waitForConnection();
   } catch (err) {
     notice.className = "notice err";
     notice.textContent = err.message;
@@ -71,6 +78,32 @@ refreshGmail();
     btn.textContent = "Connect Gmail";
   }
 });
+
+async function waitForConnection(timeoutMs = 180000) {
+  // Poll rather than block a request: the sign-in happens in another tab and may take a
+  // minute, or be abandoned entirely.
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const data = await (await fetch("/api/gmail/status")).json();
+      if (data.connected) {
+        await refreshGmail();
+        const notice = $("gmailNotice");
+        notice.className = "notice ok";
+        notice.textContent = `Connected to ${data.address}. Now click Fetch messages.`;
+        return true;
+      }
+    } catch {
+      /* server restarting or offline; keep waiting */
+    }
+  }
+  const notice = $("gmailNotice");
+  notice.className = "notice err";
+  notice.textContent =
+    "Gave up waiting for Google. If you finished signing in, click Connect Gmail again.";
+  return false;
+}
 
 $("disconnectBtn").addEventListener("click", async () => {
   await fetch("/api/gmail/disconnect", { method: "POST" });

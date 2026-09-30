@@ -123,21 +123,64 @@ def _load_credentials():
     return None
 
 
-def connect_interactive() -> str:
-    """Run the consent flow in a browser and store the token. Returns the mailbox address."""
-    from google_auth_oauthlib.flow import InstalledAppFlow
+#: Where Google sends the browser back to. Must be "localhost", not "127.0.0.1": Google treats
+#: them as different origins, and the Desktop client registers "http://localhost".
+REDIRECT_PATH = "/api/gmail/callback"
+
+#: The in-flight flow, keyed by OAuth state. One at a time is plenty for a local prototype.
+_pending: dict[str, Any] = {}
+
+
+def build_auth_url(port: int) -> str:
+    """Start the consent flow and return the URL for the browser to open.
+
+    Two steps rather than one blocking call. The previous version ran a local server inside the
+    request and waited for the redirect, which hung forever whenever the browser failed to open
+    -- and a backgrounded server process cannot reliably open one. Here the page opens the URL
+    itself, which is a real user gesture, and Google redirects back into this app.
+    """
+    from google_auth_oauthlib.flow import Flow
 
     if not CLIENT_SECRET_PATH.is_file():
         raise GmailError("Upload the OAuth client JSON first.")
 
-    flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRET_PATH), SCOPES)
-    # port=0 takes any free port; Google accepts any http://localhost port for a Desktop client.
-    creds = flow.run_local_server(port=0, prompt="consent", open_browser=True)
+    flow = Flow.from_client_secrets_file(
+        str(CLIENT_SECRET_PATH),
+        scopes=SCOPES,
+        redirect_uri=f"http://localhost:{port}{REDIRECT_PATH}",
+    )
+    url, state = flow.authorization_url(
+        access_type="offline",       # we need a refresh token, not just an access token
+        prompt="consent",            # force it, so a re-connect actually returns a new one
+        include_granted_scopes="true",
+    )
+    _pending.clear()
+    _pending[state] = flow
+    return url
 
+
+def complete_auth(state: str, full_callback_url: str) -> str:
+    """Exchange the authorisation code for a token. Returns the mailbox address."""
+    flow = _pending.pop(state, None)
+    if flow is None:
+        raise GmailError(
+            "That sign-in did not match a pending request. Click Connect Gmail again."
+        )
+
+    try:
+        flow.fetch_token(authorization_response=full_callback_url)
+    except Exception as exc:  # noqa: BLE001 - the library raises many types
+        raise GmailError(f"Google rejected the sign-in: {exc}") from exc
+
+    creds = flow.credentials
     granted = set(creds.scopes or [])
     if granted.intersection(FORBIDDEN_SCOPES):
-        TOKEN_PATH.unlink(missing_ok=True)
         raise GmailError("Google granted a send scope. Refusing to store those credentials.")
+    if not creds.refresh_token:
+        raise GmailError(
+            "Google returned no refresh token, so the connection would die in an hour. "
+            "Remove this app at myaccount.google.com/permissions and connect again."
+        )
 
     SECRETS_DIR.mkdir(parents=True, exist_ok=True)
     TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")

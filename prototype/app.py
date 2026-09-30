@@ -28,7 +28,7 @@ from contextlib import asynccontextmanager
 from email.message import EmailMessage
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -372,19 +372,64 @@ async def api_gmail_client_secret(credentials: UploadFile = File(...)) -> JSONRe
     return JSONResponse({"ok": True, "client_id": client_id})
 
 
-@app.post("/api/gmail/connect")
-def api_gmail_connect() -> JSONResponse:
-    """Open Google's consent screen in a browser and store the resulting token.
+@app.get("/api/gmail/auth-url")
+def api_gmail_auth_url() -> JSONResponse:
+    """The URL the page should open for Google sign-in.
 
-    Blocks until consent finishes, which is why the UI shows a 'check your browser' state.
+    Returned rather than opened server-side: a backgrounded server process cannot reliably open
+    a browser, and the previous blocking version hung forever when it could not.
     """
     try:
-        address = gmail_client.connect_interactive()
+        return JSONResponse({"ok": True, "url": gmail_client.build_auth_url(PORT)})
     except gmail_client.GmailError as exc:
         raise HTTPException(400, str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 - the library raises plenty of its own types
-        raise HTTPException(400, f"Sign-in failed: {exc}") from exc
-    return JSONResponse({"ok": True, "address": address})
+
+
+@app.get("/api/gmail/callback")
+def api_gmail_callback(request: Request) -> HTMLResponse:
+    """Where Google sends the browser back. Exchanges the code and stores the token."""
+    params = request.query_params
+
+    if error := params.get("error"):
+        message = (
+            "Google reported: " + error
+            + ("<p>If this says access_denied, add yourself under OAuth consent screen &rarr; "
+               "Test users, then try again.</p>" if error == "access_denied" else "")
+        )
+        return HTMLResponse(_callback_page("Sign-in failed", message, ok=False), status_code=400)
+
+    state, code = params.get("state"), params.get("code")
+    if not state or not code:
+        return HTMLResponse(
+            _callback_page("Sign-in failed", "Google sent no authorisation code.", ok=False),
+            status_code=400,
+        )
+
+    try:
+        address = gmail_client.complete_auth(state, str(request.url))
+    except gmail_client.GmailError as exc:
+        return HTMLResponse(_callback_page("Sign-in failed", str(exc), ok=False), status_code=400)
+
+    return HTMLResponse(
+        _callback_page(
+            "Connected",
+            f"Signed in as <b>{address}</b>. You can close this tab and go back to the app.",
+            ok=True,
+        )
+    )
+
+
+def _callback_page(title: str, message: str, ok: bool) -> str:
+    """A tiny standalone page, because this tab is opened by Google, not by our own UI."""
+    colour = "#157f3d" if ok else "#b3261e"
+    return (
+        f"<!doctype html><meta charset='utf-8'><title>{title}</title>"
+        "<style>body{font:15px/1.6 system-ui,sans-serif;margin:0;display:grid;"
+        "place-items:center;min-height:100vh;background:#f6f7f9;color:#1a1d21}"
+        ".c{background:#fff;border:1px solid #dfe3e8;border-radius:10px;padding:28px 32px;"
+        "max-width:480px}h1{font-size:18px;margin:0 0 8px}</style>"
+        f"<div class=c><h1 style='color:{colour}'>{title}</h1><p>{message}</p></div>"
+    )
 
 
 @app.post("/api/gmail/disconnect")
