@@ -1,0 +1,29 @@
+# Tunable settings. These are the defaults from docs/CONTRACTS.md section 4.
+#
+# Ticket P3-03 is the only ticket allowed to change these values, and it records every
+# change in docs/tuning-log.md. No other code may hardcode any of them.
+#
+# Every key can be overridden by an environment variable: EA_ + the dotted path upper-cased
+# with "." replaced by "__". For example EA_MATCH__MIN_SCORE=0.7 overrides match.min_score.
+
+classify:
+  # Below this confidence the email is labelled "Needs review" and no draft is made.
+  min_confidence: 0.75
+
+match:
+  # A match below this score is never drafted.
+  min_score: 0.60
+  # Hard cap on profiles per draft.
+  max_profiles: 3
+  # How many hybrid-search hits go to the model re-ranker.
+  rerank_pool: 10
+  # Vector weight in hybrid search; keyword weight is 1 - alpha.
+  hybrid_alpha: 0.6
+
+draft:
+  # Validation fails above this word count.
+  max_words: 200
+
+poll:
+  # Polling loop period, in seconds.
+  interval_seconds: 120

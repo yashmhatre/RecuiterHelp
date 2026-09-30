@@ -6,9 +6,10 @@
 token.json
 credentials.json
 token_cache.bin
+.secrets/
 
 # Candidate data
-resumes/
+resumes/*
 !resumes/.gitkeep
 exports/
 

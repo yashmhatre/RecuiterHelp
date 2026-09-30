@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recruiter-email-agent"
+version = "0.1.0"
+description = "Drafts replies to genuine recruiter emails with matching candidate resumes attached. Never sends."
+requires-python = ">=3.11"
+
+# Base: what every ticket needs. Deliberately tiny, so `pip install -e .[dev]` is fast and a
+# ticket's tests are not gated on unrelated dependencies.
+dependencies = [
+    "PyYAML==6.0.2",
+    "python-dotenv==1.0.1",
+]
+
+# Extras are grouped by ticket, so someone working on resume parsing does not install MLflow.
+# Each group is pinned. See docs/TICKETS.md for which ticket owns what.
+[project.optional-dependencies]
+# P0-02 Ollama client, P2-06 classify, P2-08 re-rank
+models = [
+    "httpx==0.28.1",
+    "jsonschema==4.23.0",
+]
+# P0-03 engine, P1-01 migrations and repo, P1-04 embeddings, P2-07 hybrid search
+db = [
+    "psycopg[binary]==3.2.3",
+    "SQLAlchemy==2.0.36",
+    "alembic==1.14.0",
+    "pgvector==0.3.6",
+]
+# P0-04 tracing, P3-01 eval harness
+tracing = [
+    "mlflow==2.19.0",
+]
+# P0-05 OAuth, P2-02 Gmail, P2-03 Outlook
+providers = [
+    "google-api-python-client==2.154.0",
+    "google-auth-oauthlib==1.2.1",
+    "msal==1.31.1",
+]
+# P1-02 resume parsing, P1-03 profile import
+documents = [
+    "pypdf==5.1.0",
+    "python-docx==1.1.2",
+]
+dev = [
+    "pytest==8.3.4",
+    "pytest-cov==6.0.0",
+    "ruff==0.8.4",
+]
+# P1-02 synthetic fixtures, P2-02/P2-03 recorded responses, P1-01 throwaway databases
+testing = [
+    "respx==0.22.0",
+    "reportlab==4.2.5",
+    "testcontainers==4.9.0",
+]
+
+[tool.setuptools]
+# Top-level packages that are code rather than data. `db/` is SQL assets only and has no
+# __init__.py on purpose — see db/README.md.
+packages = ["email_agent", "providers", "pipeline", "profiles", "eval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# Markers for tests that need something this machine may not have. The default run excludes
+# none of them by config; CI passes -m "not live and not integration".
+markers = [
+    "live: needs a real authorised mailbox; run by hand, never in CI",
+    "integration: needs a real local service (Ollama, Postgres, MLflow)",
+]
+addopts = "-q --strict-markers"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

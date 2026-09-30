@@ -20,10 +20,30 @@ docs/
 tickets/
   TEMPLATE.md
   phase-0/ … phase-4/        28 independently buildable tickets
+email_agent/
+  contracts.py               frozen shared types, imported by every stage
+  config.py                  settings loader
+  models/ auth/ db/          filled in by ticket
+providers/                   base, fake, gmail, outlook
+pipeline/                    verify, prefilter, classify, match, draft, validate, orchestrator
+profiles/                    resume import and embedding scripts
+eval/                        dataset, harness, metrics, adversarial cases
+db/                          SQL assets only, NOT importable (see db/README.md)
+config/settings.yaml         the tunable thresholds
+resumes/                     gitignored
 ```
 
-Code lands under `email_agent/`, `providers/`, `pipeline/`, `db/`, `profiles/`, `eval/` and
-`tests/` as tickets are completed — see [P0-01](tickets/phase-0/P0-01-repo-scaffold-and-config.md).
+## Getting started
+
+```bash
+python -m venv .venv && . .venv/Scripts/activate   # or bin/activate
+pip install -e ".[dev]"                            # add the groups your ticket needs
+pytest
+```
+
+Dependencies are grouped per ticket in `pyproject.toml`, so you install only what you need:
+`.[documents,dev]` for resume parsing, `.[models,dev]` for the model stages, `.[db,dev,testing]`
+for anything touching Postgres.
 
 ## How the work is organised
 
@@ -45,4 +65,10 @@ block nothing, and every Phase 3 target depends on them.
 
 ## Status
 
-Planning complete. No implementation code yet.
+| | |
+|---|---|
+| Planning | Complete — 28 tickets, contracts frozen |
+| P0-01 scaffold, contracts, config | Done |
+| Everything else | Not started |
+
+`pytest` currently runs 77 tests covering the contracts module and the settings loader.

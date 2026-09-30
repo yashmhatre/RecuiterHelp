@@ -1,0 +1,12 @@
+# Convenience install of everything, for a single-machine deployment.
+#
+# pyproject.toml is the source of truth for versions; this file installs the project plus every
+# optional group. Working on one ticket? Install only what it needs instead, e.g.:
+#
+#   pip install -e ".[documents,dev]"     # P1-02 resume parsing
+#   pip install -e ".[models,dev]"        # P0-02 / P2-06 / P2-08
+#   pip install -e ".[db,dev,testing]"    # P0-03 / P1-01 / P1-04 / P2-07
+#
+# Verified to resolve on Python 3.11 with pip --dry-run.
+
+-e .[models,db,tracing,providers,documents,dev,testing]
