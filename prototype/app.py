@@ -18,11 +18,13 @@ client; sending stays a human action, which is requirement 5.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
 import socket
 import sys
+from contextlib import asynccontextmanager
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -41,12 +43,47 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 ALLOWED_SUFFIXES = {".pdf", ".docx", ".doc", ".txt", ".rtf"}
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
-app = FastAPI(title="Recruiter Email Agent - prototype", docs_url="/api/docs")
-
-
-@app.on_event("startup")
-def startup() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     store.init_db()
+    yield
+
+
+app = FastAPI(
+    title="Recruiter Email Agent - prototype", docs_url="/api/docs", lifespan=lifespan
+)
+
+
+def _build_stamp() -> str:
+    """A short hash of the front-end files, shown in the header.
+
+    Exists because "I fixed it, hard-refresh" is not a reliable instruction: a cached app.js
+    made a fixed bug look unfixed once already. If the stamp on screen matches the one the
+    server prints at startup, the browser is on current code.
+    """
+    digest = hashlib.sha256()
+    for name in ("index.html", "app.js"):
+        path = STATIC_DIR / name
+        if path.is_file():
+            digest.update(path.read_bytes())
+    return digest.hexdigest()[:8]
+
+
+BUILD = _build_stamp()
+
+
+@app.middleware("http")
+async def no_store(request, call_next):
+    """Never let a browser cache this prototype.
+
+    The front end changes constantly while it is being demoed and fixed, and a stale app.js
+    costs more time than the caching saves.
+    """
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Build"] = BUILD
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +93,10 @@ def startup() -> None:
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
-    return HTMLResponse((STATIC_DIR / "index.html").read_text(encoding="utf-8"))
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    # Cache-bust the script the blunt way, so a reload cannot serve yesterday's JavaScript.
+    html = html.replace('src="/static/app.js"', f'src="/static/app.js?v={_build_stamp()}"')
+    return HTMLResponse(html)
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -305,6 +345,7 @@ def api_status() -> JSONResponse:
             "backend": llm.backend_name(),
             "profiles": store.count_profiles(),
             "using_fallback": llm.backend_name().startswith("rules"),
+            "build": _build_stamp(),
         }
     )
 
@@ -330,6 +371,7 @@ def main() -> None:
         print("  No API key found. Using keyword heuristics, which have poor recall.")
         print("  Add GEMINI_API_KEY or GROQ_API_KEY to .env for real classification.")
     print(f"  Candidate profiles: {store.count_profiles()}")
+    print(f"  Build: {_build_stamp()}   (must match the stamp shown in the page header)")
     print(f"\n  Open http://127.0.0.1:{PORT}\n")
     uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
 

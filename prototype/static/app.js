@@ -66,6 +66,7 @@ async function refreshStatus() {
       : "Using a real model for classification and re-ranking.";
     $("profileCount").textContent =
       data.profiles + (data.profiles === 1 ? " profile" : " profiles");
+    if (data.build) $("buildBadge").textContent = "build " + data.build;
   } catch {
     $("backendBadge").textContent = "server offline";
   }
