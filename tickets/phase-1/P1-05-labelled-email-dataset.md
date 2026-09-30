@@ -1,6 +1,6 @@
 # P1-05: Labelled email dataset (200-300 emails)
 
-**Phase:** 1 · **Est:** 3 days · **Blocked by:** nothing
+**Phase:** 1 · **Est:** 3 days · **Blocked by:** nothing · **Status:** tooling done, labelling + agreement pass outstanding
 
 ## Owns
 - `eval/dataset/schema.json`
@@ -54,3 +54,16 @@ own inline fixtures, never the real file.
 
 ## Done when
 `python eval/validate_dataset.py eval/dataset/labels.jsonl` passes and the count is in range.
+
+## Outcome so far
+
+Tooling built (schema, validator, labelling CLI, 10 synthetic example records). 46 tests.
+
+**Still outstanding:**
+
+- The 200-300 real emails are not labelled. The validator enforces the count window, all five
+  intents and the 25% non-recruiter share, so it fails until they are.
+- **No double-labelling support.** The ticket requires a 30-email slice labelled twice with the
+  disagreement rate reported, and there is no `--second-pass` mode or agreement report. Without
+  it the 95% accuracy target is not known to be measurable. Build this before labelling in bulk,
+  not after.

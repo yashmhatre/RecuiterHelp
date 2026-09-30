@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LabelledEmailRecord",
+  "description": "One record in the labelled email dataset. JSONL format: one JSON object per line. Fields mirror docs/CONTRACTS.md §1 (Intent, ExtractedFields).",
+  "type": "object",
+  "required": [
+    "id",
+    "provider",
+    "headers",
+    "subject",
+    "body_text",
+    "is_recruiter",
+    "intent",
+    "fields",
+    "expected_profile_ids",
+    "notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this email record."
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["gmail", "outlook"],
+      "description": "Which mailbox provider this email was fetched from."
+    },
+    "headers": {
+      "type": "object",
+      "description": "Raw email headers relevant for auth checks and pre-filtering. Keys are lower-cased header names. At minimum include authentication-results and from.",
+      "properties": {
+        "authentication-results": {
+          "type": "string",
+          "description": "SPF, DKIM and DMARC results as reported by the receiving MTA."
+        },
+        "from": {
+          "type": "string",
+          "description": "The raw From header value, e.g. 'Jane Doe <jane@example.com>'."
+        },
+        "reply-to": {
+          "type": "string",
+          "description": "Reply-To header if present."
+        },
+        "list-unsubscribe": {
+          "type": "string",
+          "description": "List-Unsubscribe header if present (indicates bulk mail)."
+        },
+        "precedence": {
+          "type": "string",
+          "description": "Precedence header if present (e.g. 'bulk', 'list')."
+        }
+      },
+      "required": ["authentication-results", "from"],
+      "additionalProperties": true
+    },
+    "subject": {
+      "type": "string",
+      "description": "Email subject line."
+    },
+    "body_text": {
+      "type": "string",
+      "description": "Plain-text email body (HTML already stripped)."
+    },
+    "is_recruiter": {
+      "type": "boolean",
+      "description": "Ground truth: is this email from a genuine recruiter?"
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "new_requirement",
+        "resume_request",
+        "follow_up",
+        "interview",
+        "other"
+      ],
+      "description": "Ground truth intent, matching email_agent.contracts.Intent values."
+    },
+    "fields": {
+      "type": "object",
+      "description": "Ground truth extracted fields, matching ExtractedFields shape from contracts.",
+      "required": [
+        "role",
+        "skills",
+        "min_years_experience",
+        "location",
+        "candidate_names",
+        "resume_requested"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "type": ["string", "null"],
+          "description": "Job title or role mentioned in the email."
+        },
+        "skills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Technical skills or requirements listed."
+        },
+        "min_years_experience": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Minimum years of experience requested."
+        },
+        "location": {
+          "type": ["string", "null"],
+          "description": "Job location or work arrangement mentioned."
+        },
+        "candidate_names": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Candidate names explicitly mentioned in the email."
+        },
+        "resume_requested": {
+          "type": "boolean",
+          "description": "Whether a resume was explicitly requested."
+        }
+      }
+    },
+    "expected_profile_ids": {
+      "type": "array",
+      "items": { "type": "integer" },
+      "description": "Profile IDs that should match this requirement. Must be non-empty for new_requirement and resume_request intents."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Free-text labelling notes: ambiguities, edge-case reasoning, anything a reviewer should know."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "intent": { "enum": ["new_requirement", "resume_request"] },
+          "is_recruiter": { "const": true }
+        },
+        "required": ["intent", "is_recruiter"]
+      },
+      "then": {
+        "properties": {
+          "expected_profile_ids": { "minItems": 1 }
+        }
+      }
+    }
+  ]
+}

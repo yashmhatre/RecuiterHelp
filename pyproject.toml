@@ -13,6 +13,8 @@ requires-python = ">=3.11"
 dependencies = [
     "PyYAML==6.0.2",
     "python-dotenv==1.0.1",
+    # Needed by both the model client (P0-02) and the dataset validator (P1-05).
+    "jsonschema==4.23.0",
 ]
 
 # Extras are grouped by ticket, so someone working on resume parsing does not install MLflow.
@@ -21,7 +23,6 @@ dependencies = [
 # P0-02 Ollama client, P2-06 classify, P2-08 re-rank
 models = [
     "httpx==0.28.1",
-    "jsonschema==4.23.0",
 ]
 # P0-03 engine, P1-01 migrations and repo, P1-04 embeddings, P2-07 hybrid search
 db = [
