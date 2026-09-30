@@ -1,0 +1,44 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+token.json
+credentials.json
+token_cache.bin
+
+# Candidate data
+resumes/
+!resumes/.gitkeep
+exports/
+
+# Labelled email data (contains real mailbox content)
+eval/dataset/*.jsonl
+eval/dataset/*.eml
+!eval/dataset/*.example.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+
+# MLflow / local state
+mlruns/
+mlflow.db
+*.sqlite3
+
+# Postgres volume (docker)
+.pgdata/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
