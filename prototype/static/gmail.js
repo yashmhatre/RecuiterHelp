@@ -39,8 +39,7 @@ $("credInput").addEventListener("change", async () => {
     if (!res.ok) throw new Error(data.detail || "upload failed");
     notice.className = "notice ok";
     notice.textContent = `Saved OAuth client ${data.client_id}. Now click Connect Gmail.`;
-    await window.refreshGmail = refreshGmail;
-refreshGmail();
+    await refreshGmail();
   } catch (err) {
     notice.className = "notice err";
     notice.textContent = err.message;
@@ -63,10 +62,12 @@ $("connectBtn").addEventListener("click", async () => {
     const tab = window.open(data.url, "_blank");
     notice.className = "notice ok";
     notice.innerHTML = tab
-      ? 'Approve access in the Google tab. You will see <b>"Google hasn't verified this app"</b> ' +
-        '— that is expected for your own project: click <b>Advanced</b>, then ' +
-        '<b>Go to (your app)</b>. This page updates by itself once you are done.'
-      : `Your browser blocked the popup. <a href="${data.url}" target="_blank">Open the Google sign-in here</a>.`;
+      ? `Approve access in the Google tab. You will see
+         <b>&ldquo;Google hasn&rsquo;t verified this app&rdquo;</b> &mdash; expected for your own
+         project. Click <b>Advanced</b>, then <b>Go to (your app)</b>.
+         This page updates by itself once you are done.`
+      : `Your browser blocked the popup.
+         <a href="${data.url}" target="_blank" rel="noopener">Open the Google sign-in here</a>.`;
 
     btn.textContent = "Waiting for Google…";
     await waitForConnection();
@@ -109,8 +110,7 @@ $("disconnectBtn").addEventListener("click", async () => {
   await fetch("/api/gmail/disconnect", { method: "POST" });
   $("gmailList").innerHTML = '<div class="empty">Disconnected.</div>';
   $("gmailResult").innerHTML = "";
-  await window.refreshGmail = refreshGmail;
-refreshGmail();
+  await refreshGmail();
 });
 
 $("fetchBtn").addEventListener("click", async () => {
@@ -231,5 +231,6 @@ async function runGmail(messageId, save, button) {
   }
 }
 
+// app.js calls this when the Gmail tab is opened.
 window.refreshGmail = refreshGmail;
 refreshGmail();
