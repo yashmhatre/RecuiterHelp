@@ -24,10 +24,11 @@ from it and treats it as read-only.
 
 ```python
 # contracts.py
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Protocol, Sequence
+from typing import Protocol
 
 # ---------- enums ----------
 
