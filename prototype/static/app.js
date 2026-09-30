@@ -13,8 +13,11 @@ document.querySelectorAll("nav button").forEach((btn) => {
     document.querySelectorAll("nav button").forEach((b) => b.classList.remove("active"));
     btn.classList.add("active");
     const tab = btn.dataset.tab;
-    $("tab-candidates").hidden = tab !== "candidates";
-    $("tab-inbox").hidden = tab !== "inbox";
+    for (const name of ["candidates", "inbox", "gmail"]) {
+      const section = $("tab-" + name);
+      if (section) section.hidden = tab !== name;
+    }
+    if (tab === "gmail" && window.refreshGmail) window.refreshGmail();
   });
 });
 

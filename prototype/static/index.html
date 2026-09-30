@@ -164,6 +164,7 @@ a { color: var(--accent); }
 <nav>
   <button data-tab="candidates" class="active">Candidates</button>
   <button data-tab="inbox">Inbox</button>
+  <button data-tab="gmail">Gmail</button>
 </nav>
 
 <main>
@@ -277,7 +278,78 @@ a { color: var(--accent); }
   </div>
 </section>
 
+
+<!-- ------------------------------------------------ gmail -->
+<section id="tab-gmail" hidden>
+  <div class="cols">
+    <div>
+      <div class="card">
+        <h2>Connect Gmail</h2>
+        <p class="hint">Read, draft and label only. The send scope is never requested, so this
+          app <b>cannot</b> send mail even if the code tried to.</p>
+
+        <div id="gmailStatus" class="verdict review">Checking&hellip;</div>
+
+        <details id="gmailSetup">
+          <summary style="cursor:pointer;font-size:13px;font-weight:600;margin-bottom:8px">
+            One-time Google Cloud setup (about 10 minutes)</summary>
+          <ol style="font-size:13px;color:var(--muted);padding-left:20px;line-height:1.7">
+            <li>Open <a href="https://console.cloud.google.com" target="_blank">Google Cloud
+              Console</a> and create a project.</li>
+            <li><b>APIs &amp; Services &rarr; Library</b>, search <b>Gmail API</b>, click
+              <b>Enable</b>.</li>
+            <li><b>OAuth consent screen</b> &rarr; <b>External</b> &rarr; fill in the name and
+              your email &rarr; <b>add yourself as a Test user</b>. Missing this step is the
+              usual cause of "access blocked".</li>
+            <li><b>Credentials &rarr; Create credentials &rarr; OAuth client ID &rarr;
+              Desktop app</b>, then <b>Download JSON</b>.</li>
+            <li>Upload that file below.</li>
+          </ol>
+          <p class="hint" style="margin-top:6px">A personal gmail.com account in Testing mode has
+            its login revoked by Google every 7 days, so expect to reconnect weekly. A Workspace
+            account with an Internal app does not.</p>
+        </details>
+
+        <label style="margin-top:14px">OAuth client JSON</label>
+        <div class="file-drop" id="credDrop">
+          <span id="credLabel">Choose the JSON you downloaded from Google Cloud Console</span>
+          <input type="file" id="credInput" accept=".json,application/json" hidden>
+        </div>
+
+        <button type="button" class="primary" id="connectBtn">Connect Gmail</button>
+        <button type="button" class="ghost" id="disconnectBtn"
+          style="margin-top:8px;display:none">Disconnect</button>
+        <div class="notice" id="gmailNotice"></div>
+      </div>
+
+      <div class="card">
+        <h2>Fetch</h2>
+        <p class="hint">Reads recent messages and runs the two free stages on each &mdash;
+          pre-filter and sender verification &mdash; so you can see which would even reach a
+          model before spending a call.</p>
+        <label>Gmail search query</label>
+        <input type="text" id="gmailQuery" value="in:inbox -category:promotions">
+        <label>How many</label>
+        <input type="number" id="gmailLimit" value="15" min="1" max="50">
+        <button type="button" class="primary" id="fetchBtn" disabled>Fetch messages</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Mailbox</h2>
+        <p class="hint">Click <b>Classify</b> to run one message through the full pipeline.
+          <b>Save draft in Gmail</b> writes a real draft into the thread and labels it
+          &ldquo;AI Draft&rdquo;. Nothing is ever sent.</p>
+        <div id="gmailList"><div class="empty">Connect and fetch to see your inbox.</div></div>
+      </div>
+      <div id="gmailResult"></div>
+    </div>
+  </div>
+</section>
+
 </main>
 <script src="/static/app.js"></script>
+<script src="/static/gmail.js"></script>
 </body>
 </html>

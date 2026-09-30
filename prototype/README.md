@@ -17,6 +17,32 @@ Two screens:
 - **Inbox** — paste a recruiter email or pick a sample, then watch every stage run. The
   adversarial samples are the interesting ones: they show the pipeline *refusing* to draft.
 
+## Connecting real Gmail
+
+The **Gmail** tab reads your real inbox, classifies real emails and saves real drafts. One-time
+Google Cloud setup, roughly ten minutes, all of it clicking in their console:
+
+1. [console.cloud.google.com](https://console.cloud.google.com) -> create a project
+2. **APIs & Services -> Library** -> **Gmail API** -> **Enable**
+3. **OAuth consent screen** -> **External** -> fill in name and email -> **add yourself as a
+   Test user**. Skipping this is the usual cause of "access blocked".
+4. **Credentials -> Create credentials -> OAuth client ID -> Desktop app** -> **Download JSON**
+5. Upload that JSON in the Gmail tab, click **Connect Gmail**, approve in the browser.
+
+Scopes requested: `gmail.readonly`, `gmail.compose`, `gmail.labels`. **`gmail.send` is never
+requested**, so the app cannot send mail even if the code tried to -- and it refuses to store a
+token that carries a send scope. `tests/test_no_send_path.py` scans the Gmail client too.
+
+Credentials live in `.secrets/`, which is gitignored.
+
+A personal gmail.com account with the consent screen in Testing mode has its refresh token
+revoked by Google every **7 days**, so expect to reconnect weekly. A Workspace account with an
+Internal app does not have that limit.
+
+The message list runs the two free stages -- pre-filter and sender verification -- on every
+message before you spend a model call, so you can see at a glance which ones would even reach
+the model.
+
 ## The model
 
 Reads whichever key is in `.env`, in this order, and falls back to keyword heuristics with none:

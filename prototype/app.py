@@ -33,7 +33,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from email_agent.config import load_dotenv_if_present
-from prototype import llm, store
+from prototype import gmail_client, llm, store
 from prototype.pipeline import email_from_form, run_pipeline
 from prototype.resume_text import extract_profile_hints, parse_resume
 
@@ -62,7 +62,7 @@ def _build_stamp() -> str:
     server prints at startup, the browser is on current code.
     """
     digest = hashlib.sha256()
-    for name in ("index.html", "app.js"):
+    for name in ("index.html", "app.js", "gmail.js"):
         path = STATIC_DIR / name
         if path.is_file():
             digest.update(path.read_bytes())
@@ -95,7 +95,9 @@ async def no_store(request, call_next):
 def index() -> HTMLResponse:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     # Cache-bust the script the blunt way, so a reload cannot serve yesterday's JavaScript.
-    html = html.replace('src="/static/app.js"', f'src="/static/app.js?v={_build_stamp()}"')
+    stamp = _build_stamp()
+    for name in ("app.js", "gmail.js"):
+        html = html.replace(f'src="/static/{name}"', f'src="/static/{name}?v={stamp}"')
     return HTMLResponse(html)
 
 
@@ -336,6 +338,140 @@ def api_samples() -> JSONResponse:
     from prototype.samples import load_samples
 
     return JSONResponse({"samples": load_samples()})
+
+
+# ---------------------------------------------------------------------------
+# Gmail
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/gmail/status")
+def api_gmail_status() -> JSONResponse:
+    state = gmail_client.status()
+    return JSONResponse(
+        {
+            "connected": state.connected,
+            "address": state.address,
+            "detail": state.detail,
+            "has_client_secret": gmail_client.CLIENT_SECRET_PATH.is_file(),
+            "scopes": gmail_client.SCOPES,
+        }
+    )
+
+
+@app.post("/api/gmail/client-secret")
+async def api_gmail_client_secret(credentials: UploadFile = File(...)) -> JSONResponse:
+    """Store the OAuth client JSON downloaded from Google Cloud Console."""
+    raw = await credentials.read()
+    if len(raw) > 64 * 1024:
+        raise HTTPException(400, "That file is too large to be an OAuth client JSON.")
+    try:
+        client_id = gmail_client.save_client_secret(raw)
+    except gmail_client.GmailError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return JSONResponse({"ok": True, "client_id": client_id})
+
+
+@app.post("/api/gmail/connect")
+def api_gmail_connect() -> JSONResponse:
+    """Open Google's consent screen in a browser and store the resulting token.
+
+    Blocks until consent finishes, which is why the UI shows a 'check your browser' state.
+    """
+    try:
+        address = gmail_client.connect_interactive()
+    except gmail_client.GmailError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 - the library raises plenty of its own types
+        raise HTTPException(400, f"Sign-in failed: {exc}") from exc
+    return JSONResponse({"ok": True, "address": address})
+
+
+@app.post("/api/gmail/disconnect")
+def api_gmail_disconnect() -> JSONResponse:
+    gmail_client.disconnect()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/gmail/messages")
+def api_gmail_messages(limit: int = 15, query: str = "in:inbox -category:promotions") -> JSONResponse:
+    """Recent messages, with the pre-filter and verification verdicts already attached.
+
+    Those two stages are free -- no model call -- so running them here lets the list show at a
+    glance which messages would even reach a model.
+    """
+    try:
+        emails = gmail_client.fetch_recent(limit=limit, query=query)
+    except gmail_client.GmailError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"Could not read the mailbox: {exc}") from exc
+
+    from email_agent.contracts import AuthResult
+    from pipeline.prefilter import prefilter
+    from pipeline.verify import verify
+
+    rows = []
+    for email in emails:
+        pre = prefilter(email)
+        ver = verify(email)
+        rows.append(
+            {
+                "id": email.provider_message_id,
+                "thread_id": email.thread_id,
+                "from_name": email.from_name,
+                "from_email": email.from_email,
+                "subject": email.subject,
+                "received_at": email.received_at.isoformat(),
+                "snippet": " ".join(email.body_text.split())[:180],
+                "prefilter_keep": pre.keep,
+                "prefilter_rule": pre.rule,
+                "auth": ver.result.value,
+                "auth_reason": ver.reason,
+                "auth_flags": list(ver.flags),
+                "would_reach_model": pre.keep and ver.result is AuthResult.PASS,
+            }
+        )
+    return JSONResponse({"messages": rows})
+
+
+@app.post("/api/gmail/run")
+def api_gmail_run(message_id: str = Form(...), save: str = Form("no")) -> JSONResponse:
+    """Run one real message through the pipeline, and optionally save the draft in Gmail."""
+    try:
+        email = gmail_client.fetch_one(message_id)
+    except gmail_client.GmailError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    profiles = store.list_profiles()
+    result = run_pipeline(email, profiles)
+    payload = result.as_dict()
+    payload["source"] = {
+        "from": f"{email.from_name} <{email.from_email}>".strip(),
+        "subject": email.subject,
+        "message_id": email.provider_message_id,
+    }
+
+    saved = None
+    if save == "yes" and result.draft and not result.draft.get("discarded"):
+        try:
+            saved = gmail_client.save_draft(result.draft, email)
+            gmail_client.apply_label(email.provider_message_id, gmail_client.AI_DRAFT_LABEL)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, f"Draft not saved: {exc}") from exc
+    elif save == "yes":
+        try:
+            gmail_client.apply_label(email.provider_message_id, gmail_client.NEEDS_REVIEW_LABEL)
+            saved = {"labelled": gmail_client.NEEDS_REVIEW_LABEL}
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(400, f"Label not applied: {exc}") from exc
+
+    payload["gmail"] = saved
+    payload["run_id"] = store.save_run(
+        subject=email.subject, sender=email.from_email, status=result.status, payload=payload
+    )
+    payload["profile_count"] = len(profiles)
+    return JSONResponse(payload)
 
 
 @app.get("/api/status")
