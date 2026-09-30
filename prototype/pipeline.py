@@ -310,6 +310,15 @@ def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
         if named:
             score = max(score, 0.75)
 
+        # A profile with no resume on file can never be attached, so it must not win a tie
+        # against one that can. Penalised rather than excluded: if it is the only thing that
+        # fits, the draft stage reports it as dropped and the reviewer learns the resume is
+        # missing, which is more useful than silence.
+        has_resume = bool(profile.get("file_path")) and Path(str(profile["file_path"])).is_file()
+        if not has_resume:
+            score -= 0.15
+            reasons.append("no resume on file")
+
         score = max(0.0, min(1.0, score))
 
         if overlap:
@@ -329,7 +338,7 @@ def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
                 "score": round(score, 3),
                 "reason": "; ".join(reasons),
                 "stage": "overlap",
-                "has_resume": bool(profile.get("file_path")),
+                "has_resume": has_resume,
             }
         )
 
@@ -339,10 +348,11 @@ def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
     if pool and not named:
         pool = _model_rerank(fields, pool, profiles)
 
-    # One profile per candidate: the highest scorer wins. This is the main guard against
-    # offering the same person twice in one reply.
+    # One profile per candidate: the main guard against offering the same person twice. The
+    # tiebreak prefers a profile with a resume, because equal scores otherwise resolve
+    # arbitrarily and a named candidate can end up represented by their unattachable profile.
     best_per_candidate: dict[int, dict] = {}
-    for item in sorted(pool, key=lambda m: -m["score"]):
+    for item in sorted(pool, key=lambda m: (-m["score"], not m.get("has_resume", False))):
         best_per_candidate.setdefault(item["candidate_id"], item)
 
     survivors = [m for m in best_per_candidate.values() if m["score"] >= MIN_SCORE]
@@ -397,10 +407,13 @@ def _model_rerank(fields: dict[str, Any], pool: list[dict], profiles: list[dict]
         if profile_id not in allowed:
             continue  # a hallucinated id is discarded, never trusted
         original = next(m for m in pool if m["profile_id"] == profile_id)
+        score = _clamp(entry.get("score"))
+        if not original.get("has_resume", False):
+            score = max(0.0, score - 0.15)  # same penalty as the overlap stage
         merged.append(
             {
                 **original,
-                "score": round(_clamp(entry.get("score")), 3),
+                "score": round(score, 3),
                 "reason": str(entry.get("reason") or original["reason"])[:200],
                 "stage": "rerank",
             }

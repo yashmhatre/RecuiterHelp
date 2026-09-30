@@ -18,8 +18,11 @@ client; sending stays a human action, which is requirement 5.
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
+import socket
+import sys
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -272,6 +275,21 @@ def api_run_eml(run_id: int) -> Response:
     )
 
 
+PORT = int(os.environ.get("PROTOTYPE_PORT", "8000"))
+
+
+def _port_is_taken(port: int) -> bool:
+    """Whether something is already listening on the port.
+
+    Checked up front because the failure otherwise looks like success: an older copy of this app
+    keeps answering, serving stale code and a stale ``.env``, while the new process dies quietly.
+    That cost real debugging time once already.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.4)
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
 @app.get("/api/samples")
 def api_samples() -> JSONResponse:
     """The synthetic emails already in the repo, so the demo needs no typing."""
@@ -294,14 +312,26 @@ def api_status() -> JSONResponse:
 def main() -> None:
     import uvicorn
 
+    if _port_is_taken(PORT):
+        print(
+            f"\n  Port {PORT} is already in use, most likely by an older copy of this app.\n"
+            f"  That copy would keep serving stale code and a stale .env, so this one will\n"
+            f"  not start. Stop it first, or run on another port with PROTOTYPE_PORT=8001.\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
     store.init_db()
+    backend = llm.backend_name()
     print("\n  Recruiter Email Agent - prototype")
-    print(f"  Model backend: {llm.backend_name()}")
-    if llm.backend_name().startswith("rules"):
-        print("  No API key found. Using keyword heuristics - add GEMINI_API_KEY or")
-        print("  GROQ_API_KEY to .env for real classification.")
-    print("  Open http://127.0.0.1:8000\n")
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+    print(f"  Model: {backend}")
+    print(f"  Fallback chain: {', '.join(b.name for b in llm.configured_backends())}")
+    if backend.startswith("rules"):
+        print("  No API key found. Using keyword heuristics, which have poor recall.")
+        print("  Add GEMINI_API_KEY or GROQ_API_KEY to .env for real classification.")
+    print(f"  Candidate profiles: {store.count_profiles()}")
+    print(f"\n  Open http://127.0.0.1:{PORT}\n")
+    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
 
 
 if __name__ == "__main__":

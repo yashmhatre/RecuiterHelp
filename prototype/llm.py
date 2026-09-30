@@ -344,7 +344,9 @@ def configured_backends() -> list[Any]:
             OpenAICompatBackend(
                 key,
                 os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-                os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                # llama-3.3-70b-versatile was retired. Qwen3 is also what Plan.md specced,
+                # and it beat the faster gpt-oss-20b on intent accuracy in testing.
+                os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b"),
                 "groq",
             )
         )
