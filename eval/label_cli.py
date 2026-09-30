@@ -31,6 +31,7 @@ import hashlib
 import json
 import re
 import sys
+import textwrap
 from email import policy
 from pathlib import Path
 
@@ -51,6 +52,9 @@ DATASET_DIR = Path(__file__).resolve().parent / "dataset"
 STAGING_PATH = DATASET_DIR / "staging.jsonl"
 LABELS_PATH = DATASET_DIR / "labels.jsonl"
 SCHEMA_PATH = DATASET_DIR / "schema.json"
+# Second, independent pass over a pinned slice. Kept in its own file so the first pass is
+# never edited, and so the second pass cannot see the first.
+PASS2_PATH = DATASET_DIR / "labels.pass2.jsonl"
 
 INTENT_CHOICES = {
     "1": "new_requirement",
@@ -416,8 +420,17 @@ def _label_one(record: dict, schema: dict, validator: jsonschema.Draft202012Vali
     return labelled
 
 
-def run_labelling_session(labels_path: Path | None = None) -> int:
-    """Run the interactive labelling session. Returns count of labels written."""
+def run_labelling_session(
+    labels_path: Path | None = None,
+    only_ids: list[str] | None = None,
+    banner: str = "LABELLING SESSION",
+) -> int:
+    """Run the interactive labelling session. Returns count of labels written.
+
+    ``only_ids`` restricts the session to those staged records, which is how the second
+    agreement pass re-labels exactly the pinned slice. Records are always read from staging,
+    never from an existing labels file, so a second pass cannot see the first pass's answers.
+    """
     labels_path = labels_path or LABELS_PATH
 
     if not STAGING_PATH.is_file():
@@ -445,6 +458,24 @@ def run_labelling_session(labels_path: Path | None = None) -> int:
         print("Staging file is empty.", file=sys.stderr)
         return 0
 
+    if only_ids is not None:
+        wanted = set(only_ids)
+        staging = [r for r in staging if r["id"] in wanted]
+        missing = wanted - {r["id"] for r in staging}
+        if missing:
+            print(
+                f"WARNING: {len(missing)} slice id(s) are not in staging and will be skipped: "
+                f"{', '.join(sorted(missing)[:8])}",
+                file=sys.stderr,
+            )
+        if not staging:
+            print(
+                "None of the pinned slice ids are in the staging file. The slice was pinned "
+                "from labels.jsonl, so staging must still hold those raw emails.",
+                file=sys.stderr,
+            )
+            return 0
+
     # Load already-labelled IDs to skip
     labelled_ids = _load_labelled_ids(labels_path)
     unlabelled = [r for r in staging if r["id"] not in labelled_ids]
@@ -454,7 +485,7 @@ def run_labelling_session(labels_path: Path | None = None) -> int:
         return 0
 
     print(f"\n{'=' * 72}")
-    print("  LABELLING SESSION")
+    print(f"  {banner}")
     print(
         f"  Total staged: {len(staging)}  |  Already labelled: {len(labelled_ids)}"
         f"  |  Remaining: {len(unlabelled)}"
@@ -582,6 +613,11 @@ def main(argv: list[str] | None = None) -> int:
               2. Label:    python eval/label_cli.py
               3. Validate: python eval/validate_dataset.py eval/dataset/labels.jsonl --no-count-check
               4. Anonymise: python eval/label_cli.py --anonymise eval/dataset/labels.jsonl -o anon.jsonl
+
+            Agreement check (run after ~30 labels, BEFORE labelling the rest):
+              a. Pin slice:  python eval/agreement.py --select --size 30
+              b. Re-label:   python eval/label_cli.py --second-pass
+              c. Report:     python eval/agreement.py
         """),
     )
     parser.add_argument(
@@ -614,6 +650,14 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=f"Path to the labels output file (default: {LABELS_PATH}).",
     )
+    parser.add_argument(
+        "--second-pass",
+        action="store_true",
+        help=(
+            "Re-label the pinned agreement slice, blind, into labels.pass2.jsonl. "
+            "Pin the slice first with: python eval/agreement.py --select"
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -643,6 +687,25 @@ def main(argv: list[str] | None = None) -> int:
         anonymise_dataset(args.anonymise, output)
         return 0
 
+    # --- Second agreement pass ---
+    if args.second_pass:
+        try:
+            from eval.agreement import read_slice
+        except ModuleNotFoundError:
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            from eval.agreement import read_slice
+        try:
+            slice_ids = read_slice()
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        run_labelling_session(
+            args.labels or PASS2_PATH,
+            only_ids=slice_ids,
+            banner=f"SECOND PASS (agreement slice, {len(slice_ids)} emails) - label blind",
+        )
+        return 0
+
     # --- Label mode (default) ---
     labels_path = args.labels or LABELS_PATH
     run_labelling_session(labels_path)
@@ -650,5 +713,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    import textwrap
     sys.exit(main())

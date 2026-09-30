@@ -1,6 +1,6 @@
 # P1-05: Labelled email dataset (200-300 emails)
 
-**Phase:** 1 · **Est:** 3 days · **Blocked by:** nothing · **Status:** tooling done, labelling + agreement pass outstanding
+**Phase:** 1 · **Est:** 3 days · **Blocked by:** nothing · **Status:** tooling done, labelling outstanding
 
 ## Owns
 - `eval/dataset/schema.json`
@@ -8,7 +8,8 @@
 - `eval/dataset/labels.jsonl` (real, **gitignored**)
 - `eval/label_cli.py`
 - `eval/validate_dataset.py`
-- `tests/test_dataset_schema.py`
+- `eval/agreement.py`
+- `tests/test_dataset_schema.py`, `tests/test_agreement.py`
 
 ## Reads
 - `docs/CONTRACTS.md` §1 (`Intent`, `ExtractedFields`)
@@ -59,11 +60,27 @@ own inline fixtures, never the real file.
 
 Tooling built (schema, validator, labelling CLI, 10 synthetic example records). 46 tests.
 
-**Still outstanding:**
+Agreement check now built (`eval/agreement.py`, `--second-pass` in the labeller). 159 tests.
 
-- The 200-300 real emails are not labelled. The validator enforces the count window, all five
-  intents and the 25% non-recruiter share, so it fails until they are.
-- **No double-labelling support.** The ticket requires a 30-email slice labelled twice with the
-  disagreement rate reported, and there is no `--second-pass` mode or agreement report. Without
-  it the 95% accuracy target is not known to be measurable. Build this before labelling in bulk,
-  not after.
+    python eval/agreement.py --select --size 30   # pin a reproducible slice
+    python eval/label_cli.py --second-pass        # re-label it, blind
+    python eval/agreement.py                      # report, exit 1 above 5%
+
+Decisions taken:
+
+- **Only `is_recruiter` and `intent` are gated** at 5%. They are the two fields with accuracy
+  targets, so they are the two whose noise makes a target unmeasurable. Free-text `role` and
+  `location` are reported but never gated: two passes word them differently for reasons that say
+  nothing about whether the label definitions are sound, and gating on them would bury the
+  signal. Skills, candidate names and profile ids compare as sets.
+- **The slice is pinned to a file**, not recomputed, because pass 1 keeps growing and a
+  recomputed slice would silently mean the two passes covered different emails.
+- **Slice selection is hash-ordered, not first-N.** Labelling order correlates with how easy an
+  email was, so a first-N slice would measure agreement on the easy cases.
+- **A partial second pass cannot report a pass.** Re-labelling 3 of a 30-email slice would
+  otherwise show perfect agreement on those 3; the comparison fails until the slice is complete.
+  Zero overlap is a failure, never a 100% score.
+
+**Still outstanding:** the 200-300 real emails are not labelled. The validator enforces the
+count window, all five intents and the 25% non-recruiter share, so it fails until they are.
+Run the agreement check after roughly the first 30, before labelling the rest.

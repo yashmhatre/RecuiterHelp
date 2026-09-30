@@ -17,6 +17,8 @@ exports/
 eval/dataset/*.jsonl
 eval/dataset/*.eml
 !eval/dataset/*.example.jsonl
+# Pinned agreement slice: record ids derived from real messages.
+eval/dataset/agreement_slice.json
 
 # Python
 __pycache__/

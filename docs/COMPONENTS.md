@@ -16,5 +16,6 @@
 | `eval/dataset/schema.json` | Validates one labelled email | Bad ground truth corrupts every metric |
 | `eval/validate_dataset.py` | Checks records, count, intent spread | Gates the dataset before accuracy is measured |
 | `eval/label_cli.py` | Import, label, resume, anonymise | Labelling is the slow path; keeps real senders out of git |
+| `eval/agreement.py` | Labels 30 emails twice, reports disagreement | If two passes disagree >5%, a 95% target is inside the noise and unmeasurable |
 | `labels.example.jsonl` | 10 synthetic records | Fixtures for other tickets; real labels gitignored |
-| `tests/` | 123 tests | Each ticket's proof it works standalone |
+| `tests/` | 159 tests | Each ticket's proof it works standalone |
