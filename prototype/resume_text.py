@@ -172,6 +172,30 @@ def _looks_like_prose(line: str) -> bool:
     return hits >= 2
 
 
+#: A summary longer than this is almost certainly the whole document, not a summary.
+SUMMARY_LIMIT = 1400
+
+
+def _truncate_cleanly(text: str, limit: int = SUMMARY_LIMIT) -> str:
+    """Cut at a sentence, or failing that a word, never mid-word.
+
+    A hard slice produced "...CI/CD with Azure DevOps and GitHub A", which reads as a bug to
+    whoever is reviewing the profile and has to be repaired by hand.
+    """
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+
+    window = text[:limit]
+    # Prefer the last sentence end that keeps most of the text.
+    sentence_end = max(window.rfind(". "), window.rfind("! "), window.rfind("? "))
+    if sentence_end > limit * 0.6:
+        return window[: sentence_end + 1].strip()
+
+    space = window.rfind(" ")
+    return (window[:space] if space > 0 else window).strip() + "…"
+
+
 def _extract_summary(text: str, content_lines: list[str]) -> str:
     """A real summary, or nothing at all.
 
@@ -197,7 +221,7 @@ def _extract_summary(text: str, content_lines: list[str]) -> str:
                 body.append(stripped)
             joined = " ".join(" ".join(body).split())
             if len(joined) >= 40:
-                return joined[:600]
+                return _truncate_cleanly(joined)
 
     # No heading: take the first run of consecutive prose lines, so the summary starts at the
     # beginning of a paragraph rather than halfway through a sentence.
@@ -218,7 +242,7 @@ def _extract_summary(text: str, content_lines: list[str]) -> str:
             break
 
     if run:
-        return " ".join(" ".join(run).split())[:600]
+        return _truncate_cleanly(" ".join(" ".join(run).split()))
     return ""
 
 

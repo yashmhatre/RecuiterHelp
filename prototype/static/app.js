@@ -27,6 +27,31 @@ $("themeToggle").addEventListener("click", () => {
 const savedTheme = localStorage.getItem("theme");
 if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
 
+// ---------------------------------------------------------------- textareas
+
+function autoGrow(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  // Capped by max-height in CSS; beyond that the box scrolls rather than pushing the
+  // Save button off screen.
+  el.style.height = Math.min(el.scrollHeight + 2, 420) + "px";
+}
+
+function wireGrow(el, counterId) {
+  if (!el) return;
+  const counter = counterId ? $(counterId) : null;
+  const update = () => {
+    autoGrow(el);
+    if (counter) {
+      const n = el.value.trim().length;
+      counter.textContent = n ? `— ${n} characters` : "";
+    }
+  };
+  el.addEventListener("input", update);
+  el._refresh = update;
+  update();
+}
+
 // ---------------------------------------------------------------- status
 
 async function refreshStatus() {
@@ -140,6 +165,8 @@ $("resumeInput").addEventListener("change", async () => {
     setIfEmpty($("f_summary"), h.summary);
     if (h.years_experience && !Number($("f_years").value)) $("f_years").value = h.years_experience;
 
+    if ($("f_summary")._refresh) $("f_summary")._refresh();
+
     const warn = (data.warnings || []).length ? ` Warnings: ${data.warnings.join(", ")}.` : "";
     note.textContent =
       "Pre-filled from the resume — check every field before saving, especially skills and years." +
@@ -173,6 +200,7 @@ $("candidateForm").addEventListener("submit", async (event) => {
     $("fileDrop").classList.remove("has-file");
     $("fileLabel").textContent = "Choose a file to upload and auto-fill";
     $("parseNote").className = "note";
+    if ($("f_summary")._refresh) $("f_summary")._refresh();
 
     await loadProfiles();
     await refreshStatus();
@@ -360,6 +388,9 @@ function render(data) {
 }
 
 // ---------------------------------------------------------------- boot
+
+wireGrow($("f_summary"), "summaryCount");
+wireGrow($("r_body"));
 
 refreshStatus();
 loadProfiles();

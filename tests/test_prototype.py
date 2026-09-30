@@ -493,3 +493,49 @@ def test_a_resume_with_no_prose_returns_an_empty_summary_not_junk():
     text = "Asha Menon\nasha@example.com\n\nSKILLS\nPython, Django\n\nEDUCATION\nB.E.\n"
 
     assert _hints(text)["summary"] == ""
+
+
+def test_a_long_summary_is_not_cut_mid_word():
+    """A hard slice produced "...CI/CD with Azure DevOps and GitHub A", which reads as a bug to
+    whoever reviews the profile and has to be repaired by hand."""
+    from prototype.resume_text import _truncate_cleanly
+
+    text = (
+        "Data engineer building dimensional data models for downstream analytics. "
+        "Strong in Spark and SQL performance tuning, data quality and audit frameworks, "
+        "automated testing and CI/CD with Azure DevOps and GitHub Actions. "
+    ) * 6
+
+    out = _truncate_cleanly(text, 300)
+
+    assert len(out) <= 301
+    assert not out.rstrip("\u2026").endswith((" A", " Gith", " Azur", " Git"))
+    assert out.rstrip("\u2026").endswith((".", "!", "?")) or out.endswith("\u2026")
+
+
+def test_a_short_summary_is_returned_unchanged():
+    from prototype.resume_text import _truncate_cleanly
+
+    text = "Data engineer with 4 years on Azure Databricks."
+
+    assert _truncate_cleanly(text, 300) == text
+
+
+def test_a_full_length_professional_summary_survives_intact():
+    """The reported case: a real seven-line summary was being cut at 600 characters."""
+    text = (
+        "Yash Mhatre +91 7506972552\nyash@example.com | Pune\n\nPROFESSIONAL SUMMARY\n"
+        "Data engineer with 4 years of experience designing and operating Medallion "
+        "lakehouses on Azure Databricks, building reliable ELT pipelines with PySpark and "
+        "Delta Lake, and modelling dimensional data models for downstream analytics. "
+        "Strong in Spark and SQL performance tuning, data quality and audit frameworks, "
+        "automated testing and CI/CD with Azure DevOps and GitHub Actions. Experienced "
+        "with Unity Catalog governance, Azure Data Factory orchestration and Power BI "
+        "semantic models serving business stakeholders across finance and operations.\n\n"
+        "SKILLS\nPySpark, Delta Lake\n"
+    )
+
+    summary = _hints(text)["summary"]
+
+    assert "GitHub Actions" in summary, "the middle of the summary was truncated away"
+    assert summary.rstrip().endswith("."), f"cut mid-sentence: {summary[-40:]!r}"

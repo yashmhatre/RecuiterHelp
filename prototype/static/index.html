@@ -75,7 +75,8 @@ input[type=text], input[type=email], input[type=number], textarea, select {
   width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--bg); color: var(--text); font: inherit;
 }
-textarea { resize: vertical; font-family: var(--mono); font-size: 13px; }
+textarea { resize: vertical; font-family: var(--mono); font-size: 13px; min-height: 76px; }
+textarea.grow { min-height: 150px; max-height: 420px; overflow-y: auto; }
 input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .row { display: flex; gap: 10px; }
 .row > * { flex: 1 1 0; min-width: 0; }
@@ -208,9 +209,9 @@ a { color: var(--accent); }
           <label>Skills <span class="opt">&mdash; comma separated</span></label>
           <input type="text" name="skills" id="f_skills" placeholder="python, django, postgresql, aws">
 
-          <label>Summary</label>
-          <textarea name="summary" id="f_summary" rows="4"
-            placeholder="Two lines on what they have actually done."></textarea>
+          <label>Summary <span class="opt" id="summaryCount"></span></label>
+          <textarea name="summary" id="f_summary" rows="8" class="grow"
+            placeholder="What they have actually done. Pulled from the resume; trim it to the parts that matter for matching."></textarea>
 
           <label>Availability <span class="opt">optional</span></label>
           <input type="text" name="availability" id="f_availability" placeholder="Immediate / 30 days">
