@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 __all__ = ["ParsedResume", "parse_resume", "extract_profile_hints"]
@@ -22,6 +23,15 @@ SKILL_VOCAB = (
     "graphql", "rest api", "microservices", "machine learning", "deep learning", "pytorch",
     "tensorflow", "scikit-learn", "nlp", "llm", "pandas", "numpy", "spark", "airflow", "dbt",
     "snowflake", "tableau", "power bi", "sql", "linux", "git", "selenium", "pytest", "cypress",
+    # Azure and data engineering. Added after a real resume came back with almost no skills
+    # detected: the vocabulary was Python-web shaped and missed an entire discipline.
+    "databricks", "azure databricks", "pyspark", "delta lake", "unity catalog", "lakehouse",
+    "medallion", "azure data factory", "adf", "synapse", "azure synapse", "adls", "data lake",
+    "etl", "elt", "ssis", "sql server", "t-sql", "azure devops", "databricks sql",
+    "delta live tables", "dlt", "autoloader", "great expectations", "data modeling",
+    "dimensional modeling", "star schema", "slowly changing dimensions", "scd",
+    "data warehouse", "redshift", "bigquery", "glue", "athena", "emr", "hive", "hadoop",
+    "looker", "dax", "azure functions", "event hubs", "cosmos db", "blob storage",
 )
 
 
@@ -106,6 +116,122 @@ def _normalise(text: str) -> str:
     return "\n".join(line.strip() for line in text.split("\n")).strip()
 
 
+#: Lines that are contact details rather than content.
+_CONTACT_MARKERS = re.compile(
+    r"(@|linkedin|github|gitlab|portfolio|https?://|www\.|\+\d{1,3}[\s-]?\d|\d{10})",
+    re.IGNORECASE,
+)
+
+#: Headings that introduce a real summary, in the wording resumes actually use.
+_SUMMARY_HEADINGS = (
+    "professional summary", "career summary", "profile summary", "executive summary",
+    "summary of qualifications", "summary", "professional profile", "profile", "about me",
+    "about", "objective", "career objective", "overview", "synopsis", "introduction",
+)
+
+
+def _strip_contact_block(text: str) -> list[str]:
+    """Drop the contact header so it cannot be mistaken for content.
+
+    A real resume put the name, phone, email and LinkedIn on two lines with no SUMMARY heading
+    anywhere, and the old fallback -- "first 45 words" -- filled the summary field with the
+    contact block. Removing those lines up front fixes the summary, the name and the headline
+    together.
+    """
+    kept: list[str] = []
+    for index, raw in enumerate(text.splitlines()):
+        line = raw.strip()
+        if not line:
+            continue
+        # Only the top of the document is contact-shaped; an email further down is content.
+        if index < 8 and _CONTACT_MARKERS.search(line):
+            continue
+        kept.append(line)
+    return kept
+
+
+def _looks_like_prose(line: str) -> bool:
+    """Whether a line reads as a sentence rather than a heading or a skills bar."""
+    if len(line) < 45:
+        return False
+    if line.count("|") >= 2 or line.count("•") >= 2:
+        return False
+    if line.isupper():
+        return False
+    words = line.split()
+    if len(words) < 8:
+        return False
+    # Counting lower-case words rejected real sentences: technical prose is full of proper
+    # nouns ("Built Medallion pipelines on Azure Databricks using PySpark"). Function words
+    # are the reliable signal -- a comma-separated skills list has almost none.
+    functions = {
+        "the", "a", "an", "with", "of", "on", "for", "and", "in", "to", "from", "that",
+        "by", "as", "into", "across", "using", "through", "over", "at", "while",
+    }
+    hits = sum(1 for w in words if w.strip(",.;:()").lower() in functions)
+    return hits >= 2
+
+
+def _extract_summary(text: str, content_lines: list[str]) -> str:
+    """A real summary, or nothing at all.
+
+    Empty beats wrong here: the field is edited by hand before saving, and deleting a paragraph
+    of someone's phone number is more work than typing one line.
+    """
+    lines = text.splitlines()
+    for index, raw in enumerate(lines):
+        heading = raw.strip().rstrip(":").strip().lower()
+        if heading in _SUMMARY_HEADINGS:
+            body: list[str] = []
+            for following in lines[index + 1 : index + 12]:
+                stripped = following.strip()
+                if not stripped:
+                    if body:
+                        break
+                    continue
+                # Stop at the next heading.
+                if stripped.rstrip(":").strip().lower() in _SUMMARY_HEADINGS or (
+                    stripped.isupper() and len(stripped.split()) <= 5
+                ):
+                    break
+                body.append(stripped)
+            joined = " ".join(" ".join(body).split())
+            if len(joined) >= 40:
+                return joined[:600]
+
+    # No heading: take the first run of consecutive prose lines, so the summary starts at the
+    # beginning of a paragraph rather than halfway through a sentence.
+    run: list[str] = []
+    for line in content_lines:
+        if _looks_like_prose(line):
+            run.append(line)
+            if len(run) >= 3:
+                break
+        elif run:
+            break
+    if run:
+        return " ".join(" ".join(run).split())[:600]
+    return ""
+
+
+def _extract_headline_skills(content_lines: list[str]) -> list[str]:
+    """Skills from a pipe- or bullet-delimited headline bar near the top.
+
+    "DATA ENGINEER | AZURE DATABRICKS | PYSPARK | DELTA LAKE" is the densest skill signal in
+    many resumes and the vocabulary scan alone misses the phrasing.
+    """
+    found: list[str] = []
+    for line in content_lines[:6]:
+        if line.count("|") < 2:
+            continue
+        for part in line.split("|"):
+            token = part.strip().strip("-• ").lower()
+            token = re.sub(r"\s*\(.*?\)\s*", " ", token).strip()
+            if 2 <= len(token) <= 40 and not token.isdigit():
+                found.append(token)
+    return found
+
+
 def _clean_phone(match) -> str:
     """Only return a phone number long enough to plausibly be one."""
     if not match:
@@ -117,21 +243,28 @@ def _clean_phone(match) -> str:
 def extract_profile_hints(text: str) -> dict:
     """Guess name, email, phone, title, skills, years and location from resume text."""
     lowered = text.lower()
+    content_lines = _strip_contact_block(text)
 
     email_match = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", text)
     phone_match = re.search(r"(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{3,5}\)?[\s-]?)?\d{5,10}", text)
 
+    # The name often shares a line with the phone number ("YASH MHATRE +91 75069..."), so read
+    # the leading capitalised words rather than requiring a line that holds only a name.
     name = ""
-    for line in text.splitlines()[:6]:
-        stripped = line.strip()
-        if (
-            2 <= len(stripped.split()) <= 4
-            and "@" not in stripped
-            and not re.search(r"\d", stripped)
-            and stripped.replace(" ", "").replace(".", "").replace("-", "").isalpha()
-        ):
-            name = " ".join(w.capitalize() for w in stripped.split())
-            break
+    for raw in text.splitlines()[:6]:
+        leading = re.match(r"^\s*((?:[A-Z][A-Za-z.'-]+\s+){1,3}[A-Z][A-Za-z.'-]+)", raw.strip())
+        if not leading:
+            continue
+        words = leading.group(1).split()
+        if not (2 <= len(words) <= 4):
+            continue
+        if not all(w.replace(".", "").replace("-", "").replace("'", "").isalpha() for w in words):
+            continue
+        candidate = " ".join(words)
+        if candidate.lower() in {"curriculum vitae", "resume of", "data engineer"}:
+            continue
+        name = " ".join(w.capitalize() for w in words)
+        break
 
     title = ""
     title_match = re.search(
@@ -142,6 +275,17 @@ def extract_profile_hints(text: str) -> dict:
     )
     if title_match:
         title = " ".join(w.capitalize() for w in title_match.group(1).split())
+    if not title:
+        # Many resumes put the title first in a pipe-delimited headline bar.
+        for line in content_lines[:4]:
+            first = line.split("|")[0].strip()
+            if 2 <= len(first.split()) <= 5 and re.search(
+                r"\b(engineer|developer|architect|analyst|scientist|consultant|administrator)\b",
+                first,
+                re.IGNORECASE,
+            ):
+                title = " ".join(w.capitalize() for w in first.split())
+                break
 
     years = None
     for pattern in (
@@ -154,27 +298,53 @@ def extract_profile_hints(text: str) -> dict:
             years = float(found.group(1))
             break
 
+    if years is None:
+        # No "N years of experience" phrasing anywhere. Infer from the earliest employment date
+        # range, which many resumes state only as "(2022-present)". A guess, and the form is
+        # edited before saving, so a wrong guess costs one correction rather than a bad match.
+        ranges = re.findall(r"\b(19|20)(\d{2})\s*(?:-|to|–)\s*(present|current|\d{4})", lowered)
+        if ranges:
+            span = datetime.now(UTC).year - min(int(f"{c}{y}") for c, y, _ in ranges)
+            if 0 < span <= 45:
+                years = float(span)
+
+    cities = (
+        "pune", "navi mumbai", "mumbai", "thane", "bangalore", "bengaluru", "hyderabad",
+        "new delhi", "delhi", "noida", "gurugram", "gurgaon", "chennai", "kolkata",
+        "ahmedabad", "jaipur", "indore", "kochi", "coimbatore", "nagpur", "remote",
+    )
+    # Search the contact header first. Scanning the whole document picked up the university city
+    # from an EDUCATION line, which is not where the candidate lives now.
+    header = "\n".join(text.splitlines()[:4]).lower()
     location = ""
-    for city in (
-        "pune", "bangalore", "bengaluru", "hyderabad", "mumbai", "delhi", "noida", "gurgaon",
-        "chennai", "kolkata", "ahmedabad", "jaipur", "indore", "remote",
-    ):
-        if re.search(rf"\b{city}\b", lowered):
-            location = city.title()
+    for scope in (header, lowered):
+        for city in cities:
+            if re.search(rf"\b{city}\b", scope):
+                location = city.title()
+                break
+        if location:
             break
 
-    skills = sorted({s for s in SKILL_VOCAB if re.search(rf"(?<![a-z]){re.escape(s)}(?![a-z])", lowered)})
-
-    summary = ""
-    summary_match = re.search(
-        r"(?:summary|profile|objective|about)\s*[:\n]\s*(.{60,400}?)(?:\n\n|\nexperience|\nskills)",
-        text,
-        re.IGNORECASE | re.DOTALL,
+    vocab_hits = {
+        s for s in SKILL_VOCAB if re.search(rf"(?<![a-z]){re.escape(s)}(?![a-z])", lowered)
+    }
+    # Merge in the headline bar, but drop segments that are job titles, so "data engineer" does
+    # not become a skill alongside "pyspark".
+    for token in _extract_headline_skills(content_lines):
+        if token in SKILL_VOCAB:
+            vocab_hits.add(token)
+        elif not re.search(
+            r"\b(engineer|developer|architect|analyst|scientist|consultant)\b", token
+        ):
+            vocab_hits.add(token)
+    # Headline bars produce compounds like "delta lake lakehouse architecture" beside the
+    # canonical "delta lake". Keep the canonical term and drop anything that merely wraps it.
+    canonical = {t for t in vocab_hits if t in SKILL_VOCAB}
+    skills = sorted(
+        t for t in vocab_hits if t in canonical or not any(c in t and c != t for c in canonical)
     )
-    if summary_match:
-        summary = " ".join(summary_match.group(1).split())
-    elif text:
-        summary = " ".join(text.split()[:45])
+
+    summary = _extract_summary(text, content_lines)
 
     return {
         "name": name,

@@ -390,3 +390,106 @@ def test_attaching_a_new_resume_demotes_the_previous_one(tmp_path, monkeypatch):
 
     current = store.list_profiles(db)[0]
     assert current["filename"] == "v2.pdf", "only the newest resume may be current"
+
+
+# ---------------------------------------------------------------------------
+# Resume extraction
+# ---------------------------------------------------------------------------
+
+#: A real resume in this shape filled the Summary field with the contact block: the name, phone,
+#: email and LinkedIn all on two lines, then a pipe-delimited headline, and no SUMMARY heading
+#: anywhere for the old regex to find.
+CONTACT_HEADER_RESUME = """YASH MHATRE +91 7506972552
+yashmhatre26@gmail.com LinkedIn: Yash Mhatre
+DATA ENGINEER | AZURE DATABRICKS | PYSPARK | DELTA LAKE Lakehouse (Medallion) Architecture
+| ETL / ELT Pipelines | Unity Catalog | CI/CD
+
+EXPERIENCE
+Data Engineer, Analytics Platform (2022-present)
+Built Medallion-architecture pipelines on Azure Databricks using PySpark and Delta Lake,
+landing curated tables governed through Unity Catalog for downstream Power BI reporting.
+
+SKILLS
+Azure Databricks, PySpark, Delta Lake, Unity Catalog, Azure Data Factory, SQL, Python
+"""
+
+
+def _hints(text: str) -> dict:
+    from prototype.resume_text import extract_profile_hints
+
+    return extract_profile_hints(text)
+
+
+def test_the_summary_is_never_the_contact_block():
+    """The reported bug. A paragraph of someone's phone number is worse than an empty field."""
+    summary = _hints(CONTACT_HEADER_RESUME)["summary"]
+
+    assert "7506972552" not in summary
+    assert "@" not in summary
+    assert "linkedin" not in summary.lower()
+
+
+def test_the_summary_starts_at_a_sentence_not_mid_paragraph():
+    summary = _hints(CONTACT_HEADER_RESUME)["summary"]
+
+    assert summary.startswith("Built Medallion-architecture pipelines")
+
+
+def test_a_name_sharing_a_line_with_a_phone_number_is_read():
+    assert _hints(CONTACT_HEADER_RESUME)["name"] == "Yash Mhatre"
+
+
+def test_a_title_in_a_pipe_headline_is_read():
+    assert _hints(CONTACT_HEADER_RESUME)["title"] == "Data Engineer"
+
+
+def test_headline_and_section_skills_are_both_picked_up():
+    skills = _hints(CONTACT_HEADER_RESUME)["skills"]
+
+    for expected in ("pyspark", "delta lake", "unity catalog", "azure databricks"):
+        assert expected in skills, f"{expected} missing from {skills}"
+
+
+def test_compound_headline_skills_do_not_duplicate_the_canonical_one():
+    """"delta lake lakehouse architecture" must not sit beside "delta lake"."""
+    skills = _hints(CONTACT_HEADER_RESUME)["skills"]
+
+    assert "delta lake lakehouse architecture" not in skills
+    assert "delta lake" in skills
+
+
+def test_years_are_inferred_from_a_date_range_when_not_stated():
+    """The resume never says "N years", so matching would otherwise treat it as zero."""
+    years = _hints(CONTACT_HEADER_RESUME)["years_experience"]
+
+    assert years is not None
+    assert 1 <= years <= 20
+
+
+def test_an_explicit_summary_heading_still_wins():
+    text = (
+        "Yash Mhatre\nyash@example.com | Pune\n\nPROFESSIONAL SUMMARY\n"
+        "Data engineer with 3 years of experience building lakehouses on Azure Databricks, "
+        "with a focus on reliable ELT pipelines.\n\nSKILLS\nPySpark\n"
+    )
+    hints = _hints(text)
+
+    assert hints["summary"].startswith("Data engineer with 3 years")
+    assert hints["years_experience"] == 3.0
+    assert hints["location"] == "Pune"
+
+
+def test_the_contact_header_location_beats_a_university_city():
+    """Scanning the whole document picked the EDUCATION city, which is not where they live."""
+    text = (
+        "Asha Menon\nasha@example.com | Pune\n\nEXPERIENCE\nEngineer with the team, "
+        "building services on AWS for the platform group.\n\nEDUCATION\nB.E., Mumbai\n"
+    )
+
+    assert _hints(text)["location"] == "Pune"
+
+
+def test_a_resume_with_no_prose_returns_an_empty_summary_not_junk():
+    text = "Asha Menon\nasha@example.com\n\nSKILLS\nPython, Django\n\nEDUCATION\nB.E.\n"
+
+    assert _hints(text)["summary"] == ""
