@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -41,6 +42,12 @@ FORBIDDEN_SCOPES = (  # send-guard: allow (named here in order to reject them)
     "https://www.googleapis.com/auth/gmail.send",
     "https://mail.google.com/",
 )
+
+#: oauthlib environment switches, set only around the token exchange.
+#: INSECURE_TRANSPORT: allows the http://localhost redirect Google itself mandates for a
+#: Desktop client. RELAX_TOKEN_SCOPE: Google returns openid alongside what was asked for,
+#: and oauthlib treats a changed scope set as an error without this.
+_OAUTHLIB_SWITCHES = ("OAUTHLIB_INSECURE_TRANSPORT", "OAUTHLIB_RELAX_TOKEN_SCOPE")
 
 AI_DRAFT_LABEL = "AI Draft"
 NEEDS_REVIEW_LABEL = "Needs review"
@@ -167,10 +174,23 @@ def complete_auth(state: str, full_callback_url: str) -> str:
             "That sign-in did not match a pending request. Click Connect Gmail again."
         )
 
+    # oauthlib refuses a non-https redirect by default. Google deliberately allows plain http
+    # for loopback redirects from an installed (Desktop) client -- the code never leaves this
+    # machine -- so the check is relaxed for this one call and restored immediately, rather than
+    # set process-wide where it would also apply to any other OAuth traffic.
+    previous = {name: os.environ.get(name) for name in _OAUTHLIB_SWITCHES}
+    for name in _OAUTHLIB_SWITCHES:
+        os.environ[name] = "1"
     try:
         flow.fetch_token(authorization_response=full_callback_url)
     except Exception as exc:  # noqa: BLE001 - the library raises many types
         raise GmailError(f"Google rejected the sign-in: {exc}") from exc
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
     creds = flow.credentials
     granted = set(creds.scopes or [])
