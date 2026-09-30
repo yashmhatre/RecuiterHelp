@@ -203,15 +203,44 @@ def _extract_summary(text: str, content_lines: list[str]) -> str:
     # beginning of a paragraph rather than halfway through a sentence.
     run: list[str] = []
     for line in content_lines:
-        if _looks_like_prose(line):
-            run.append(line)
-            if len(run) >= 3:
-                break
-        elif run:
+        if not run:
+            if _looks_like_prose(line):
+                run.append(line)
+            continue
+
+        # Continuation of a wrapped paragraph. A looser test on purpose: the last line of a
+        # wrapped paragraph is short ("reporting. Automated deployments with Azure DevOps."),
+        # and the full prose test rejects it, which truncated the summary mid-sentence.
+        if _is_heading(line) or len(line.split()) < 3:
             break
+        run.append(line)
+        if len(run) >= 6 or line.rstrip().endswith((".", "!", "?")) and len(run) >= 2:
+            break
+
     if run:
         return " ".join(" ".join(run).split())[:600]
     return ""
+
+
+def _is_heading(line: str) -> bool:
+    """A short all-caps or title-style line that starts a new section."""
+    stripped = line.strip().rstrip(":")
+    if not stripped:
+        return True
+    if stripped.lower() in _SUMMARY_HEADINGS:
+        return True
+    return stripped.isupper() and len(stripped.split()) <= 5
+
+
+#: Headline segments that are not skills. These show up when a headline wraps across lines,
+#: e.g. "DELTA LAKE Lakehouse (Medallion)" / "Architecture | ETL ...", which yields a bare
+#: "architecture" segment.
+_NOT_A_SKILL = {
+    "architecture", "architectures", "pipelines", "pipeline", "engineering", "development",
+    "design", "solutions", "services", "systems", "platform", "platforms", "tools",
+    "technologies", "frameworks", "experience", "expertise", "specialist", "professional",
+    "certified", "immediate joiner", "notice period", "available", "resume", "cv",
+}
 
 
 def _extract_headline_skills(content_lines: list[str]) -> list[str]:
@@ -227,7 +256,7 @@ def _extract_headline_skills(content_lines: list[str]) -> list[str]:
         for part in line.split("|"):
             token = part.strip().strip("-• ").lower()
             token = re.sub(r"\s*\(.*?\)\s*", " ", token).strip()
-            if 2 <= len(token) <= 40 and not token.isdigit():
+            if 2 <= len(token) <= 40 and not token.isdigit() and token not in _NOT_A_SKILL:
                 found.append(token)
     return found
 
