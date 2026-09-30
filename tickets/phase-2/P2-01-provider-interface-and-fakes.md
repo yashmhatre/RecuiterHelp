@@ -1,6 +1,6 @@
 # P2-01: Provider interface, fake provider and the no-send guard
 
-**Phase:** 2 · **Est:** 1 day · **Blocked by:** nothing
+**Phase:** 2 · **Est:** 1 day · **Blocked by:** nothing · **Status:** done
 
 ## Owns
 - `providers/base.py`
@@ -38,12 +38,42 @@ a mailbox. Deliberately first, deliberately small.
 The fake is the whole point — it is what makes P2-04 through P2-13 independent of a mailbox.
 
 ## Acceptance criteria
-- [ ] `MailProvider` has no send method and no way to reach one
-- [ ] The contract suite is importable and passes against `providers/fake.py`
-- [ ] The no-send guard scans the whole repo and fails on an added send call — proven by
+- [x] `MailProvider` has no send method and no way to reach one
+- [x] The contract suite is importable and passes against `providers/fake.py`
+- [x] The no-send guard scans the whole repo and fails on an added send call — proven by
       temporarily adding one in the test
-- [ ] Fake cursor semantics: fetching with the returned cursor yields zero new messages
-- [ ] `get_provider("gmail")` does not import the Graph module, and vice versa
+- [x] Fake cursor semantics: fetching with the returned cursor yields zero new messages
+- [x] `get_provider("gmail")` does not import the Graph module, and vice versa
 
 ## Done when
 `pytest tests/test_provider_contract.py tests/test_no_send_path.py` passes.
+
+## Outcome
+
+Done. 63 tests for this ticket, 222 repo-wide, lint clean.
+
+Decisions:
+
+- **The no-send guard parses instead of grepping.** `grep -r "\.send("` cannot tell code from
+  prose, and the tickets, CONTRACTS.md and several comments all discuss sending. Worse, P0-05
+  *must* contain the literal strings `"Mail.Send"` and `"gmail.send"` in order to reject those
+  scopes. A text scan would fire on all of that or be watered down until it caught nothing. The
+  guard walks the AST for send-shaped calls, definitions and string literals, so only real code
+  counts. A single line may carry `# send-guard: allow`, which is not suppressible file-wide, so
+  every exception stays visible in review.
+- **Error types live in `base.py`**, not in each provider: `ProviderError`,
+  `TransientProviderError`, `CursorExpiredError`, `AuthorisationError`. Not in the original scope,
+  but both P2-02 and P2-03 need to signal a rate limit and a stale cursor, and if base does not
+  define them the two providers invent incompatible ones and P2-12 has to know both.
+- **`BaseMailProvider.__init_subclass__` refuses a send method at class-creation time**, so the
+  mistake fails on import rather than waiting for review or the repo scan.
+- **An unusable cursor raises `CursorExpiredError`** rather than returning an empty batch. Silence
+  there would mean new mail is never processed again and nothing would look wrong.
+- **`FakeMailProvider.expire_cursor()`** simulates a stale Gmail history id or Graph delta token,
+  which P2-12 needs to prove the polling loop survives.
+- The fake reads only transport fields from a dataset record. A test asserts the ground-truth
+  labels do not leak into `RawEmail`, since a provider handing the pipeline the answers would
+  make every metric meaningless.
+
+The guard found a real violation on first run: the `Sneaky` class in the contract suite, which
+exists to prove the base class refuses a send method. It now carries the allow marker.
