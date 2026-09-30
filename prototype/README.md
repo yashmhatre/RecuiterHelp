@@ -29,8 +29,17 @@ Reads whichever key is in `.env`, in this order, and falls back to keyword heuri
 | `OLLAMA_HOST` | local Ollama | Nothing leaves the machine |
 
 The badge in the header shows which backend actually answered, so a degraded run is never
-mistaken for a good one. Gemini's free tier returns `503` under load, so the client retries with
-backoff and then tries alternate models before giving up.
+mistaken for a good one.
+
+**Free-tier quota is per model, and it runs out.** `gemini-3.5-flash` returned `429` after a few
+dozen calls during testing while `gemini-3.5-flash-lite` kept working, so lite is the default:
+classification and re-ranking do not need the bigger model, and spending its quota has no upside.
+The client retries briefly, walks a list of alternate Gemini models, then crosses over to the
+next configured provider, and only then falls back to keyword heuristics.
+
+**Before a demo, add a second provider.** A Groq key next to the Gemini one is the difference
+between a working demo and keyword heuristics if the daily quota is gone. Nothing to configure
+beyond the key.
 
 **The model never reads a resume.** It classifies the email and re-ranks short profile summaries.
 Resume files are bytes copied into the draft. So even on a hosted API, resumes stay on this
@@ -86,7 +95,8 @@ wrong.
 ## Known limits
 
 - The keyword fallback has poor recall — it missed a plainly genuine requirement in testing. It
-  exists so the demo runs with no key, not to be good.
+  exists so the demo runs with no key, not to be good. If the header badge says `rules`, the
+  demo is degraded and the classification cannot be trusted.
 - Location matching is generous. A wrongly excluded candidate is invisible; a wrongly included one
   scores low and gets read.
 - The pre-filter and verifier have only been measured against the 10 synthetic emails. The real

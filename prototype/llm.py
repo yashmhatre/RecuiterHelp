@@ -92,8 +92,11 @@ class GeminiBackend:
     name = "gemini"
 
     #: Tried in order when the configured model is overloaded or retired.
-    ALTERNATES = ("gemini-3.5-flash", "gemini-flash-latest", "gemini-3.8-flash",
-                  "gemini-3.5-flash-lite", "gemini-2.5-flash")
+    #: Tried in order. Lite first on purpose: each Gemini model has its own free-tier quota,
+    #: and the bigger models exhaust theirs first. Classification and re-ranking do not need
+    #: the bigger model, so spending its quota is a demo risk with no upside.
+    ALTERNATES = ("gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest",
+                  "gemini-3.8-flash", "gemini-3.1-flash-lite")
 
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
@@ -118,7 +121,7 @@ class GeminiBackend:
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
                 f"{model}:generateContent"
             )
-            for delay in (0, 1.5, 4):
+            for delay in (0, 1.0):
                 if delay:
                     time.sleep(delay)
                 with httpx.Client(timeout=TIMEOUT) as client:
@@ -323,31 +326,49 @@ class RuleBackend:
 # ---------------------------------------------------------------------------
 
 
-def get_backend() -> Any:
-    """First configured backend wins, in order of output quality for this task."""
+def configured_backends() -> list[Any]:
+    """Every configured backend, best first, always ending in the rule fallback.
+
+    A list rather than a single choice because free tiers run out. Each Gemini model has its
+    own daily quota, and when they are gone a second provider is the difference between a
+    working demo and keyword heuristics. Add a Groq key alongside the Gemini one and the
+    prototype crosses over automatically.
+    """
+    backends: list[Any] = []
+
     if key := os.environ.get("GEMINI_API_KEY", "").strip():
-        return GeminiBackend(key)
+        backends.append(GeminiBackend(key))
 
     if key := os.environ.get("GROQ_API_KEY", "").strip():
-        return OpenAICompatBackend(
-            key,
-            os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-            os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
-            "groq",
+        backends.append(
+            OpenAICompatBackend(
+                key,
+                os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+                os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile"),
+                "groq",
+            )
         )
 
     if key := os.environ.get("OPENAI_API_KEY", "").strip():
-        return OpenAICompatBackend(
-            key,
-            os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-            os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-            "openai-compatible",
+        backends.append(
+            OpenAICompatBackend(
+                key,
+                os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+                "openai-compatible",
+            )
         )
 
     if host := os.environ.get("OLLAMA_HOST", "").strip():
-        return OllamaBackend(host)
+        backends.append(OllamaBackend(host))
 
-    return RuleBackend()
+    backends.append(RuleBackend())
+    return backends
+
+
+def get_backend() -> Any:
+    """The preferred backend, for reporting which one the UI expects to use."""
+    return configured_backends()[0]
 
 
 def backend_name() -> str:
@@ -362,11 +383,19 @@ def generate_json(system: str, user: str) -> LLMResult:
     result records which backend actually answered, and the UI shows it, so a degraded run is
     never mistaken for a good one.
     """
-    backend = get_backend()
-    try:
-        return backend.generate_json(system, user)
-    except Exception as exc:  # noqa: BLE001 - any backend failure degrades, never crashes
-        result = RuleBackend().generate_json(system, user)
-        result.raw = f"{backend.name} failed ({exc}); used rule fallback"
-        result.backend = f"rules (after {backend.name} failed)"
-        return result
+    failures: list[str] = []
+    for backend in configured_backends():
+        try:
+            result = backend.generate_json(system, user)
+            if failures:
+                result.backend = f"{backend.name} (after {', '.join(failures)})"
+            return result
+        except Exception as exc:  # noqa: BLE001 - a backend failure degrades, never crashes
+            failures.append(f"{backend.name} failed: {str(exc)[:120]}")
+
+    # Unreachable: RuleBackend is always last and cannot fail. Kept so a future reordering
+    # cannot turn a degraded run into a crash.
+    result = RuleBackend().generate_json(system, user)
+    result.backend = "rules"
+    result.raw = "; ".join(failures)
+    return result
