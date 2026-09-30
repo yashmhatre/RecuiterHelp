@@ -70,6 +70,9 @@ block nothing, and every Phase 3 target depends on them.
 | Planning | Complete — 28 tickets, contracts frozen |
 | P0-01 scaffold, contracts, config | Done |
 | P1-05 dataset tooling | Done, agreement check included; labelling outstanding |
+| P2-01 provider interface, fake, no-send guard | Done |
+| P2-04 sender verification | Done |
+| P2-05 pre-filter | Done |
 | Everything else | Not started |
 
-`pytest` currently runs 159 tests. What each file is for: [docs/COMPONENTS.md](docs/COMPONENTS.md).
+`pytest` currently runs 335 tests. What each file is for: [docs/COMPONENTS.md](docs/COMPONENTS.md).

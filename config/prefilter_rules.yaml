@@ -1,0 +1,114 @@
+# Pre-filter rules. Cheap, deterministic checks that drop obvious non-mail before a model is
+# ever loaded.
+#
+# Editable without a code change so P3-03 can tune them. Every drop records the rule name, so a
+# wrongly dropped email can be diagnosed from the log alone.
+#
+# Order matters: rules are evaluated cheapest-first and stop at the first match. `order` below
+# is the evaluation order.
+#
+# The metric that matters for this stage is ZERO false drops on genuine recruiter mail. A
+# dropped email is silently lost — there is no label, no draft and nothing for a human to see.
+# When in doubt, keep it and let the model decide.
+
+order:
+  - own_mail
+  - list_unsubscribe
+  - list_id
+  - precedence_bulk
+  - auto_submitted
+  - autoreply_header
+  - delivery_failure
+  - out_of_office
+  - noreply_sender
+  - job_alert_sender
+
+rules:
+  # Our own sent mail. Replying to ourselves would loop.
+  own_mail:
+    enabled: true
+
+  # A one-click unsubscribe header means bulk mail by definition. RFC 2369 / 8058.
+  list_unsubscribe:
+    enabled: true
+    headers: [list-unsubscribe, list-unsubscribe-post]
+
+  # Mailing list traffic.
+  list_id:
+    enabled: true
+    headers: [list-id, list-post, list-help]
+
+  precedence_bulk:
+    enabled: true
+    header: precedence
+    values: [bulk, list, junk]
+
+  # RFC 3834. Anything other than "no" means the message was generated automatically.
+  auto_submitted:
+    enabled: true
+    header: auto-submitted
+    # Quoted deliberately: YAML parses a bare `no` as the boolean false.
+    allowed: ["no"]
+
+  autoreply_header:
+    enabled: true
+    headers: [x-autoreply, x-autorespond, x-auto-response-suppress]
+
+  delivery_failure:
+    enabled: true
+    senders: [mailer-daemon, postmaster]
+    subject_patterns:
+      - "undelivered mail"
+      - "delivery status notification"
+      - "returned mail"
+      - "mail delivery failed"
+      - "undeliverable"
+
+  out_of_office:
+    enabled: true
+    subject_patterns:
+      - "out of office"
+      - "automatic reply"
+      - "auto-reply"
+      - "autoreply"
+      - "away from my desk"
+      - "on leave"
+      - "on annual leave"
+      - "maternity leave"
+      - "paternity leave"
+
+  # A no-reply address cannot receive a draft reply, so there is nothing useful to do with it.
+  noreply_sender:
+    enabled: true
+    local_parts:
+      - noreply
+      - no-reply
+      - no_reply
+      - donotreply
+      - do-not-reply
+      - bounce
+      - bounces
+      - mailer-daemon
+      - postmaster
+
+  # Job boards blasting listings. These are not a recruiter writing to us.
+  # Matched on the full address or the local part, not on the body.
+  job_alert_sender:
+    enabled: true
+    local_parts:
+      - jobs-listings
+      - jobalerts
+      - job-alerts
+      - jobalert
+      - alerts
+      - alert
+      - notifications
+      - notification
+      - newsletter
+      - newsletters
+      - digest
+      - updates
+      - marketing
+      - campaign
+    addresses: []
+    domains: []

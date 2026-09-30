@@ -1,0 +1,47 @@
+# Free consumer mail providers.
+#
+# A sender on one of these is not suspicious by itself — plenty of genuine independent
+# recruiters use Gmail. It becomes a flag only when the message also claims to write on behalf
+# of a company (see `freemail_claims_company` in pipeline/verify.py).
+#
+# One domain per line. Blank lines and lines starting with # are ignored.
+
+gmail.com
+googlemail.com
+yahoo.com
+yahoo.co.in
+yahoo.co.uk
+ymail.com
+rocketmail.com
+hotmail.com
+hotmail.co.uk
+outlook.com
+live.com
+msn.com
+aol.com
+icloud.com
+me.com
+mac.com
+protonmail.com
+proton.me
+pm.me
+zoho.com
+zohomail.com
+gmx.com
+gmx.net
+mail.com
+yandex.com
+yandex.ru
+rediffmail.com
+sify.com
+indiatimes.com
+tutanota.com
+fastmail.com
+hushmail.com
+inbox.com
+mail.ru
+qq.com
+163.com
+126.com
+naver.com
+daum.net

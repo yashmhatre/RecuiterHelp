@@ -1,6 +1,6 @@
 # P2-05: Pre-filter
 
-**Phase:** 2 · **Est:** 1 day · **Blocked by:** nothing
+**Phase:** 2 · **Est:** 1 day · **Blocked by:** nothing · **Status:** done
 
 ## Owns
 - `pipeline/prefilter.py`
@@ -34,14 +34,37 @@ must name its rule so a wrongly dropped email can be diagnosed from the log alon
 Pure function over inline `RawEmail` fixtures. No dependencies at all.
 
 ## Acceptance criteria
-- [ ] Each rule has a test that trips it and one that does not
-- [ ] A genuine recruiter email that happens to contain the word "unsubscribe" in the body but
+- [x] Each rule has a test that trips it and one that does not
+- [x] A genuine recruiter email that happens to contain the word "unsubscribe" in the body but
       has no `List-Unsubscribe` header is kept
-- [ ] Our own sent mail is dropped as `is_from_self`
-- [ ] Rules load from YAML; adding a sender to the list needs no code change
-- [ ] **Zero false drops** across the recruiter emails in the labelled set — this is the metric
+- [x] Our own sent mail is dropped as `is_from_self`
+- [x] Rules load from YAML; adding a sender to the list needs no code change
+- [x] **Zero false drops** across the recruiter emails in the labelled set — this is the metric
       that matters, since a dropped email is silently lost
 
 ## Done when
 `pytest tests/test_prefilter.py` passes, including the zero-false-drop check against
 `labels.example.jsonl`.
+
+## Outcome
+
+Done. 63 tests, lint clean.
+
+Decisions:
+
+- **Sender keywords match whole segments, not bare substrings.** `jobs-listings@` and
+  `linkedin-jobalert@` are robots; `jobsmith@`, `alerta@` and `newsletterexpert@` are people.
+  A substring match would drop all of them, and a dropped email leaves no trace at all.
+- **The domain is not the signal; the sending mailbox is.** `priya.sharma@jobboard.example.com`
+  is kept while `jobs-listings@jobboard.example.com` is dropped.
+- **Only the `List-Unsubscribe` header counts, never the word in the body.** Plenty of genuine
+  signatures mention unsubscribing.
+- **Substring matching on subjects is deliberate**, not regex: these patterns are hand-edited
+  during P3-03 tuning, and a broken regex there would be a silent behaviour change.
+
+Fixed during the work: `allowed: [no]` in the YAML parsed as the boolean `false`, so every
+`Auto-Submitted` check crashed. Now quoted, and list values are coerced with `str()` so another
+bare `no`, `null` or number in a hand-edited rule file cannot crash the pipeline.
+
+The zero-false-drop check runs against `labels.example.jsonl`. Re-run it against the real
+labelled set when P1-05 lands.

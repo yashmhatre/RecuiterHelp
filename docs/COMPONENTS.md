@@ -13,9 +13,15 @@
 | `.env.example` | Secret names, no values | Real `.env` is gitignored |
 | `pyproject.toml` | Deps grouped per ticket | Work one ticket without installing MLflow |
 | `db/` | SQL only, not importable | Keeps SQL apart from `email_agent/db/` code |
+| `providers/base.py` | Abstract base, label names, error types | One definition of correct provider behaviour for Gmail and Graph |
+| `providers/fake.py` | Mailbox in a list, seeded from JSONL | Pipeline tickets test without an authorised mailbox |
+| `providers/registry.py` | Lazy provider lookup | Running Outlook must not require the Google libraries |
+| `pipeline/verify.py` | SPF/DKIM/DMARC + impersonation flags | Requirement 6; runs before any model, so a spoofed sender never reaches one |
+| `pipeline/prefilter.py` | Drops bulk and automated mail | Saves a model call; every drop names its rule, since a drop is otherwise invisible |
+| `config/prefilter_rules.yaml` | The drop rules | P3-03 tunes them without a code change |
 | `eval/dataset/schema.json` | Validates one labelled email | Bad ground truth corrupts every metric |
 | `eval/validate_dataset.py` | Checks records, count, intent spread | Gates the dataset before accuracy is measured |
 | `eval/label_cli.py` | Import, label, resume, anonymise | Labelling is the slow path; keeps real senders out of git |
 | `eval/agreement.py` | Labels 30 emails twice, reports disagreement | If two passes disagree >5%, a 95% target is inside the noise and unmeasurable |
 | `labels.example.jsonl` | 10 synthetic records | Fixtures for other tickets; real labels gitignored |
-| `tests/` | 159 tests | Each ticket's proof it works standalone |
+| `tests/` | 335 tests | Each ticket's proof it works standalone |
