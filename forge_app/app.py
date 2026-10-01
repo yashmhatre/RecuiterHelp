@@ -19,6 +19,7 @@ import streamlit as st
 
 # Exeliq integration: the inbound Email Agent page lives in its own module.
 import exeliq_email_agent
+from forge import navigation
 
 # --------------------------------------------------------------------------
 # PAGE CONFIG
@@ -603,7 +604,7 @@ def render_gauge(pct: int, size: int = 84, color: str = "#5B4CF2", label: str = 
             <div style="font-size:{max(14, size//5)}px;font-weight:700;color:#24243B;">{pct}%</div>
         </div>
     </div>
-    {f'<div style="text-align:center;font-size:11px;color:#8A8FA3;margin-top:4px;">{label}</div>' if label else ''}
+    {f'<div style="text-align:center;font-size:11px;color:#6E748C;margin-top:4px;">{label}</div>' if label else ''}
     """
     return html
 
@@ -670,7 +671,7 @@ def build_resume_text(job=None):
     return "\n".join(lines)
 
 
-TARGET_ROLE_PRIORITY = {"high": "#C23636", "medium": "#B8790A", "low": "#1E8E4C"}
+TARGET_ROLE_PRIORITY = {"high": "#C23636", "medium": "#A06909", "low": "#1C8647"}
 
 
 def compute_gap_analysis(job):
@@ -976,6 +977,22 @@ def get_career_recommendation():
 st.markdown(
     """
     <style>
+    /* Exeliq integration: typography. The skill's pairing for dashboards and admin panels,
+       and the app previously specified no typeface at all. Fira Sans for interface text,
+       Fira Code where figures need to line up. */
+    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
+    html, body, [class*="st-"], .stApp, button, input, textarea, select {
+        font-family: 'Fira Sans', -apple-system, 'Segoe UI', Roboto, sans-serif !important;
+    }
+    /* Figures that get compared sit in tabular monospace so columns align. */
+    .metric-value, .forge-figure { font-family: 'Fira Code', ui-monospace, monospace !important;
+                                   font-variant-numeric: tabular-nums; }
+
+    /* Flat: a single transition speed, in the skill's 150-200ms band. */
+    button, a, .stButton button, .auth-path { transition: all 170ms ease !important; }
+    .stButton button, .stFormSubmitButton button { cursor: pointer !important; }
+
     .stApp { background-color: #F5F6FA; }
     section[data-testid="stSidebar"] {
         background-color: #FFFFFF;
@@ -988,12 +1005,12 @@ st.markdown(
     }
     .forge-brand-badge {
         width: 38px; height: 38px; border-radius: 10px;
-        background: linear-gradient(135deg, #5B4CF2, #7C6BFA);
+        background: #5B4CF2;  /* flat: gradient removed */
         display: flex; align-items: center; justify-content: center;
         color: white; font-weight: 700; font-size: 17px;
     }
     .forge-brand-name { font-size: 17px; font-weight: 700; color: #24243B; line-height:1.1;}
-    .forge-brand-sub { font-size: 10px; color: #8A8FA3; letter-spacing: 0.04em; }
+    .forge-brand-sub { font-size: 10px; color: #6E748C; letter-spacing: 0.04em; }
     .hero-card {
         background: linear-gradient(135deg, #5B4CF2 0%, #7C6BFA 60%, #9C8CFF 100%);
         border-radius: 16px; padding: 26px 30px; color: white; margin-bottom: 18px;
@@ -1004,7 +1021,7 @@ st.markdown(
         background: white; border-radius: 14px; padding: 16px 18px;
         border: 1px solid #ECEEF6; box-shadow: 0 1px 2px rgba(20,20,50,0.04);
     }
-    .metric-label { font-size: 12px; color: #8A8FA3; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;}
+    .metric-label { font-size: 12px; color: #6E748C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;}
     .metric-value { font-size: 26px; font-weight: 700; color: #24243B; margin-top: 4px;}
     .section-title { font-size: 18px; font-weight: 700; color: #24243B; margin: 6px 0 10px 0;}
     .faq-tag {
@@ -1027,8 +1044,8 @@ st.markdown(
         display:inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px;
         font-weight: 700; margin-right: 6px;
     }
-    .pill-strong { background:#E4F7EA; color:#1E8E4C; }
-    .pill-medium { background:#FFF4E0; color:#B8790A; }
+    .pill-strong { background:#E4F7EA; color:#1C8647; }
+    .pill-medium { background:#FFF4E0; color:#A06909; }
     .pill-weak { background:#FDE7E7; color:#C23636; }
     .job-card {
         background: white; border-radius: 14px; padding: 16px 18px; border: 1px solid #ECEEF6;
@@ -1042,29 +1059,29 @@ st.markdown(
     .match-badge {
         display:inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
     }
-    .match-high { background:#E4F7EA; color:#1E8E4C; }
-    .match-mid { background:#FFF4E0; color:#B8790A; }
+    .match-high { background:#E4F7EA; color:#1C8647; }
+    .match-mid { background:#FFF4E0; color:#A06909; }
     .match-low { background:#F1F0F7; color:#5A5E73; }
     .status-badge {
         display:inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
     }
     .status-applied { background:#EEF0FF; color:#5B4CF2; }
-    .status-interview { background:#FFF4E0; color:#B8790A; }
-    .status-offer { background:#E4F7EA; color:#1E8E4C; }
+    .status-interview { background:#FFF4E0; color:#A06909; }
+    .status-offer { background:#E4F7EA; color:#1C8647; }
     .streak-dot {
         width: 20px; height: 20px; border-radius: 6px; display:inline-flex; align-items:center;
         justify-content:center; font-size: 9px; font-weight:700; margin-right:3px;
     }
-    .streak-on { background:#22C55E; color:white; }
-    .streak-off { background:#EEF0F7; color:#B4B2A9; }
+    .streak-on { background:#178841; color:white; }
+    .streak-off { background:#EEF0F7; color:#6E748C; }
     .cand-row {
         background: white; border-radius: 12px; padding: 12px 16px; border: 1px solid #ECEEF6;
         margin-bottom: 8px; display:flex; align-items:center; justify-content:space-between;
     }
     .gap-tag { display:inline-block; padding:4px 11px; border-radius:20px; font-size:11px; font-weight:700; margin:3px 4px 3px 0; }
     .gap-high { background:#FDE7E7; color:#C23636; }
-    .gap-medium { background:#FFF4E0; color:#B8790A; }
-    .gap-low { background:#E4F7EA; color:#1E8E4C; }
+    .gap-medium { background:#FFF4E0; color:#A06909; }
+    .gap-low { background:#E4F7EA; color:#1C8647; }
     .course-card {
         background: white; border-radius: 14px; padding: 14px 16px; border: 1px solid #ECEEF6;
         margin-bottom: 8px;
@@ -1113,7 +1130,7 @@ st.markdown(
        product rather than decorating them. */
     .auth-path { border-left: 3px solid #5B4CF2; }
     .auth-path-name { font-weight: 650; color: #24243B; font-size: 14.5px; margin-bottom: 3px; }
-    .auth-path-detail { color: #8A8FA3; font-size: 12.8px; line-height: 1.45; }
+    .auth-path-detail { color: #6E748C; font-size: 12.8px; line-height: 1.45; }
 
     /* Form fields were grey-on-grey against a grey canvas, so the boundary between a label and
        its input was doing no work. White field, visible border, accent only on focus. */
@@ -1135,13 +1152,29 @@ st.markdown(
         background: #FFFFFF !important; border-color: #DDE1EC !important; border-radius: 9px !important;
     }
 
-    /* Sidebar navigation: twenty undifferentiated radio rows read as a debug menu. Tighten the
-       rhythm and let the selected item carry the accent. */
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
-        padding: 3px 0 !important;
+    /* Sidebar navigation. Twenty undifferentiated rows read as a debug menu, so the list is
+       now grouped by what the person is doing and each row is a button: the selected one can
+       then carry the accent, which a radio dot cannot do legibly at this density. */
+    .nav-group {
+        font-size: 10.5px; font-weight: 700; color: #6E7690;
+        letter-spacing: 0.06em; text-transform: uppercase;
+        margin: 16px 0 5px 4px;
     }
-    section[data-testid="stSidebar"] div[role="radiogroup"] > label p {
-        font-size: 13.5px !important; color: #5A5E73 !important;
+    section[data-testid="stSidebar"] .stButton button {
+        text-align: left !important; justify-content: flex-start !important;
+        padding: 5px 10px !important; min-height: 0 !important;
+        font-size: 13.5px !important; font-weight: 500 !important;
+        border: none !important; background: transparent !important;
+        color: #5A5E73 !important; border-radius: 8px !important;
+    }
+    section[data-testid="stSidebar"] .stButton button:hover {
+        background: #F2F3F9 !important; color: #24243B !important;
+    }
+    section[data-testid="stSidebar"] .stButton button[kind="primary"] {
+        background: #EEF0FF !important; color: #5B4CF2 !important; font-weight: 650 !important;
+    }
+    section[data-testid="stSidebar"] .stButton button:disabled {
+        color: #C7CAD6 !important; background: transparent !important;
     }
 
     /* The brand subtitle was tracked-out all-caps, which is a styling default rather than a
@@ -1191,40 +1224,35 @@ with st.sidebar:
     # Exeliq integration: show each account only the pages that apply to it. Previously every
     # account saw all twenty, so a recruiter was offered interview practice and a job seeker was
     # offered an inbound mailbox neither of them has.
+    # Exeliq integration: grouped, task-named navigation. See forge/navigation.py for why.
     _recruiter = is_recruiter_account(st.session_state.profile)
-    _visible = [
-        item for item in NAV_ITEMS
-        if not (_recruiter and item[1] in CANDIDATE_ONLY_PAGES)
-        and not (not _recruiter and item[1] in RECRUITER_ONLY_PAGES)
-    ]
-    labels = [item[0] for item in _visible]
-    keys = [item[1] for item in _visible]
 
-    # Lock navigation until authenticated / profile complete, mirrors real onboarding flow
-    def nav_disabled(key: str) -> bool:
-        if key in ("auth",):
+    def nav_locked(key: str) -> bool:
+        """Onboarding gate, unchanged in behaviour from the original radio version."""
+        if key == "auth":
             return False
         if key == "profile":
             return not st.session_state.authenticated
-        if key in (
-            "welcome", "videos", "faqs", "settings",
-            "dashboard", "job_hunter", "jd_intelligence", "candidate_matching",
-            "resume_intelligence", "gap_analysis", "learning_dev",
-            "simulation", "performance_eval", "human_authenticity",
-            "linkedin_branding", "outreach", "success_tracking", "career_intelligence",
-            "email_agent",
-        ):
-            return not st.session_state.profile_complete
-        return False
+        return not st.session_state.profile_complete
 
-    default_index = keys.index(st.session_state.active_page) if st.session_state.active_page in keys else 0
-    choice = st.radio("Navigate", labels, index=default_index, label_visibility="collapsed")
-    chosen_key = keys[labels.index(choice)]
-
-    if nav_disabled(chosen_key) and chosen_key != st.session_state.active_page:
-        st.warning("Please complete the previous step first.")
-    else:
-        st.session_state.active_page = chosen_key
+    for group in navigation.nav_for(_recruiter):
+        visible = [e for e in group.entries if not nav_locked(e.key)
+                   or e.key == st.session_state.active_page]
+        if not visible:
+            continue
+        st.markdown(f'<div class="nav-group">{group.title}</div>', unsafe_allow_html=True)
+        for entry in group.entries:
+            active = st.session_state.active_page == entry.key
+            locked = nav_locked(entry.key)
+            if st.button(
+                entry.label,
+                key=f"nav_{entry.key}",
+                use_container_width=True,
+                disabled=locked,
+                type="primary" if active else "secondary",
+            ):
+                st.session_state.active_page = entry.key
+                st.rerun()
 
     st.divider()
     if st.session_state.authenticated:
@@ -1771,12 +1799,12 @@ elif page == "dashboard":
     with top1:
         st.markdown(
             f'<div class="section-title">Welcome back, {first_name}! \U0001F44B</div>'
-            f'<div style="color:#8A8FA3;font-size:13px;margin-top:-8px;">'
+            f'<div style="color:#6E748C;font-size:13px;margin-top:-8px;">'
             f'{"Your talent command center" if is_corporate else "Your career command center"}</div>',
             unsafe_allow_html=True,
         )
     with top2:
-        st.markdown(render_gauge(readiness, size=76, color="#22C55E", label=f"Overall Readiness · {readiness_label}"), unsafe_allow_html=True)
+        st.markdown(render_gauge(readiness, size=76, color="#178841", label=f"Overall Readiness · {readiness_label}"), unsafe_allow_html=True)
 
     st.write("")
     n_applied = len(st.session_state.applied_jobs)
@@ -1786,17 +1814,17 @@ elif page == "dashboard":
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         st.markdown(f'<div class="metric-card"><div class="metric-label">Jobs Found</div>'
-                     f'<div class="metric-value">{len(jobs)}</div><div style="font-size:11px;color:#1E8E4C;">+{rng.randint(2,6)} this week</div></div>', unsafe_allow_html=True)
+                     f'<div class="metric-value">{len(jobs)}</div><div style="font-size:11px;color:#1C8647;">+{rng.randint(2,6)} this week</div></div>', unsafe_allow_html=True)
     with c2:
         st.markdown(f'<div class="metric-card"><div class="metric-label">Applications</div>'
-                     f'<div class="metric-value">{n_applied}</div><div style="font-size:11px;color:#1E8E4C;">{n_saved} saved</div></div>', unsafe_allow_html=True)
+                     f'<div class="metric-value">{n_applied}</div><div style="font-size:11px;color:#1C8647;">{n_saved} saved</div></div>', unsafe_allow_html=True)
     with c3:
         st.markdown(f'<div class="metric-card"><div class="metric-label">Interviews</div>'
-                     f'<div class="metric-value">{n_interview}</div><div style="font-size:11px;color:#8A8FA3;">this month</div></div>', unsafe_allow_html=True)
+                     f'<div class="metric-value">{n_interview}</div><div style="font-size:11px;color:#6E748C;">this month</div></div>', unsafe_allow_html=True)
     with c4:
         profile_views = 40 + completeness * 20 + rng.randint(0, 30)
         st.markdown(f'<div class="metric-card"><div class="metric-label">Profile Views</div>'
-                     f'<div class="metric-value">{profile_views}</div><div style="font-size:11px;color:#1E8E4C;">+{rng.randint(8,25)}% this week</div></div>', unsafe_allow_html=True)
+                     f'<div class="metric-value">{profile_views}</div><div style="font-size:11px;color:#1C8647;">+{rng.randint(8,25)}% this week</div></div>', unsafe_allow_html=True)
 
     st.write("")
     left, right = st.columns([1.6, 1])
@@ -1811,7 +1839,7 @@ elif page == "dashboard":
                         <div class="company-badge">{job['company'][0]}</div>
                         <div>
                             <div style="font-weight:700;color:#24243B;font-size:13px;">{job['title']}</div>
-                            <div style="color:#8A8FA3;font-size:11px;">{job['company']} · {job['location']}</div>
+                            <div style="color:#6E748C;font-size:11px;">{job['company']} · {job['location']}</div>
                         </div>
                     </div>
                     <span class="match-badge {match_cls}">{job['match_pct']}% Match</span>
@@ -1846,13 +1874,13 @@ elif page == "dashboard":
             st.markdown(
                 f'<div style="display:flex;justify-content:space-between;padding:7px 0;'
                 f'border-bottom:1px solid #ECEEF6;font-size:12px;color:#5A5E73;">'
-                f'<span>{text}</span><span style="color:#B4B2A9;">{when}</span></div>',
+                f'<span>{text}</span><span style="color:#6E748C;">{when}</span></div>',
                 unsafe_allow_html=True,
             )
     with r2:
         st.markdown("##### Learning Streak")
         streak_days = 3 + completeness * 2
-        st.markdown(f'<div style="font-size:26px;font-weight:700;color:#24243B;">{streak_days} <span style="font-size:13px;color:#8A8FA3;font-weight:400;">days in a row</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size:26px;font-weight:700;color:#24243B;">{streak_days} <span style="font-size:13px;color:#6E748C;font-weight:400;">days in a row</span></div>', unsafe_allow_html=True)
         dots_html = "".join(
             f'<span class="streak-dot {"streak-on" if i < min(7, streak_days) else "streak-off"}">{d}</span>'
             for i, d in enumerate(["M", "T", "W", "T", "F", "S", "S"])
@@ -1905,8 +1933,8 @@ elif page == "job_hunter":
                         <div class="company-badge">{job['company'][0]}</div>
                         <div>
                             <div style="font-weight:700;color:#24243B;font-size:14px;">{job['title']}</div>
-                            <div style="color:#8A8FA3;font-size:12px;">{job['company']} · {job['location']}</div>
-                            <div style="color:#B4B2A9;font-size:11px;">{job['years']}+ Yrs · {job['job_type']} · Posted {posted}</div>
+                            <div style="color:#6E748C;font-size:12px;">{job['company']} · {job['location']}</div>
+                            <div style="color:#6E748C;font-size:11px;">{job['years']}+ Yrs · {job['job_type']} · Posted {posted}</div>
                         </div>
                     </div>
                     <span class="match-badge {match_cls}">{job['match_pct']}% Match</span>
@@ -2020,7 +2048,7 @@ elif page == "jd_intelligence":
                 st.write(f"Experience Level: **{result['seniority']}**")
                 st.write(f"Job Type: **{result['job_type']}**")
                 st.write(f"Industry: **{result['industry']}**")
-                st.markdown(render_gauge(result["match_potential"], size=80, color="#22C55E", label="Match Potential"), unsafe_allow_html=True)
+                st.markdown(render_gauge(result["match_potential"], size=80, color="#178841", label="Match Potential"), unsafe_allow_html=True)
         with tab_skills:
             for s in result["found_skills"]:
                 st.markdown(f"- {s.title()}")
@@ -2063,7 +2091,7 @@ elif page == "candidate_matching":
                         <div class="company-badge" style="background:linear-gradient(135deg,#5B4CF2,#7C6BFA);color:white;">{initials(c['name'])}</div>
                         <div>
                             <div style="font-weight:700;color:#24243B;font-size:13px;">{c['name']}</div>
-                            <div style="color:#8A8FA3;font-size:11px;">Skills {c['skills_match']}% · Experience {c['experience_match']}% · Readiness {c['readiness_score']}%</div>
+                            <div style="color:#6E748C;font-size:11px;">Skills {c['skills_match']}% · Experience {c['experience_match']}% · Readiness {c['readiness_score']}%</div>
                         </div>
                     </div>
                     <span class="match-badge {'match-high' if c['overall_match']>=85 else 'match-mid' if c['overall_match']>=70 else 'match-low'}">{c['overall_match']}% Match</span>
@@ -2089,7 +2117,7 @@ elif page == "candidate_matching":
                 <div class="cand-row">
                     <div>
                         <div style="font-weight:700;color:#24243B;font-size:13px;">{job['title']}</div>
-                        <div style="color:#8A8FA3;font-size:11px;">{job['company']} · {job['location']}</div>
+                        <div style="color:#6E748C;font-size:11px;">{job['company']} · {job['location']}</div>
                     </div>
                     <div style="display:flex;gap:8px;align-items:center;">
                         <span class="status-badge {status_cls}">{status}</span>
@@ -2196,11 +2224,11 @@ elif page == "gap_analysis":
     with g2:
         st.markdown("**Skill Gaps**")
         st.markdown("High Priority")
-        st.markdown("".join(f'<span class="gap-tag gap-high">{s.title()}</span>' for s in gap["high_priority"]) or "<span style='color:#8A8FA3;font-size:12px;'>None</span>", unsafe_allow_html=True)
+        st.markdown("".join(f'<span class="gap-tag gap-high">{s.title()}</span>' for s in gap["high_priority"]) or "<span style='color:#6E748C;font-size:12px;'>None</span>", unsafe_allow_html=True)
         st.markdown("Medium Priority")
-        st.markdown("".join(f'<span class="gap-tag gap-medium">{s.title()}</span>' for s in gap["medium_priority"]) or "<span style='color:#8A8FA3;font-size:12px;'>None</span>", unsafe_allow_html=True)
+        st.markdown("".join(f'<span class="gap-tag gap-medium">{s.title()}</span>' for s in gap["medium_priority"]) or "<span style='color:#6E748C;font-size:12px;'>None</span>", unsafe_allow_html=True)
         st.markdown("Low Priority")
-        st.markdown("".join(f'<span class="gap-tag gap-low">{s.title()}</span>' for s in gap["low_priority"]) or "<span style='color:#8A8FA3;font-size:12px;'>None</span>", unsafe_allow_html=True)
+        st.markdown("".join(f'<span class="gap-tag gap-low">{s.title()}</span>' for s in gap["low_priority"]) or "<span style='color:#6E748C;font-size:12px;'>None</span>", unsafe_allow_html=True)
     with g3:
         st.markdown("**Recommendations**")
         for i, rec in enumerate(gap["recommendations"], 1):
@@ -2262,7 +2290,7 @@ elif page == "learning_dev":
             enrolled = course["id"] in st.session_state.enrolled_courses
             st.markdown(
                 f'<div class="course-card"><b>{course["title"]}</b><br>'
-                f'<span style="color:#8A8FA3;font-size:12px;">{course["provider"]} \u00b7 {course["duration"]}</span></div>',
+                f'<span style="color:#6E748C;font-size:12px;">{course["provider"]} \u00b7 {course["duration"]}</span></div>',
                 unsafe_allow_html=True,
             )
             if st.button("Enrolled \u2713" if enrolled else "Enroll", key=f"enroll_{course['id']}", disabled=enrolled):
@@ -2315,7 +2343,7 @@ elif page == "simulation":
             css_cls = "scenario-done" if done else ("scenario-active" if active else "")
             st.markdown(
                 f'<div class="scenario-item {css_cls}"><b>{sc["title"]}</b><br>'
-                f'<span style="color:#8A8FA3;font-size:11px;">{sc["category"]} \u00b7 {status}</span></div>',
+                f'<span style="color:#6E748C;font-size:11px;">{sc["category"]} \u00b7 {status}</span></div>',
                 unsafe_allow_html=True,
             )
             if st.button("Select", key=f"select_{sc['id']}", use_container_width=True):
@@ -2362,7 +2390,7 @@ elif page == "simulation":
                     )
             with ev2:
                 score_label = "Excellent" if result["overall"] >= 85 else "Good" if result["overall"] >= 70 else "Needs Work"
-                st.markdown(render_gauge(result["overall"], size=90, color="#22C55E" if result["overall"] >= 70 else "#B8790A", label=f"Overall Score \u00b7 {score_label}"), unsafe_allow_html=True)
+                st.markdown(render_gauge(result["overall"], size=90, color="#178841" if result["overall"] >= 70 else "#A06909", label=f"Overall Score \u00b7 {score_label}"), unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------
 # PAGE: PERFORMANCE EVALUATOR AGENT
@@ -2381,7 +2409,7 @@ elif page == "performance_eval":
     with p1:
         score_label = "Excellent" if summary["overall"] >= 85 else "Good" if summary["overall"] >= 70 else "Needs Work"
         st.markdown("**Overall Performance**")
-        st.markdown(render_gauge(summary["overall"], size=110, color="#22C55E" if summary["overall"] >= 70 else "#B8790A", label=score_label), unsafe_allow_html=True)
+        st.markdown(render_gauge(summary["overall"], size=110, color="#178841" if summary["overall"] >= 70 else "#A06909", label=score_label), unsafe_allow_html=True)
     with p2:
         st.markdown("**Category Scores**")
         for label, key in [("Technical Depth", "technical"), ("Communication", "communication"),
@@ -2437,7 +2465,7 @@ elif page == "human_authenticity":
     with h2:
         st.markdown("**Voice Consistency Score**")
         label = "High" if voice["consistency"] >= 80 else "Medium" if voice["consistency"] >= 55 else "Low"
-        st.markdown(render_gauge(voice["consistency"], size=90, color="#22C55E" if voice["consistency"] >= 80 else "#B8790A", label=label), unsafe_allow_html=True)
+        st.markdown(render_gauge(voice["consistency"], size=90, color="#178841" if voice["consistency"] >= 80 else "#A06909", label=label), unsafe_allow_html=True)
 
     st.write("")
     tab_tone, tab_brand = st.tabs(["Content Tonality", "Brand Insights"])
@@ -2496,15 +2524,15 @@ elif page == "linkedin_branding":
         with pc1:
             st.markdown(f'<div class="metric-card"><div class="metric-label">Engagement</div>'
                         f'<div class="metric-value">{perf["engagement"]/1000:.1f}K</div>'
-                        f'<div style="font-size:11px;color:#1E8E4C;">+{perf["engagement_delta"]}%</div></div>', unsafe_allow_html=True)
+                        f'<div style="font-size:11px;color:#1C8647;">+{perf["engagement_delta"]}%</div></div>', unsafe_allow_html=True)
         with pc2:
             st.markdown(f'<div class="metric-card"><div class="metric-label">Profile Views</div>'
                         f'<div class="metric-value">{perf["views"]/1000:.1f}K</div>'
-                        f'<div style="font-size:11px;color:#1E8E4C;">+{perf["views_delta"]}%</div></div>', unsafe_allow_html=True)
+                        f'<div style="font-size:11px;color:#1C8647;">+{perf["views_delta"]}%</div></div>', unsafe_allow_html=True)
         with pc3:
             st.markdown(f'<div class="metric-card"><div class="metric-label">Reactions</div>'
                         f'<div class="metric-value">{perf["reactions"]}</div>'
-                        f'<div style="font-size:11px;color:#1E8E4C;">+{perf["reactions_delta"]}%</div></div>', unsafe_allow_html=True)
+                        f'<div style="font-size:11px;color:#1C8647;">+{perf["reactions_delta"]}%</div></div>', unsafe_allow_html=True)
 
         st.write("")
         e1, e2 = st.columns(2)
@@ -2555,7 +2583,7 @@ elif page == "outreach":
                 <div class="campaign-row">
                     <div>
                         <div style="font-weight:700;color:#24243B;font-size:13px;">{c['name']}</div>
-                        <div style="color:#8A8FA3;font-size:11px;">Target {c['target']} \u00b7 Response {c['response']} ({c['response_rate']}%)</div>
+                        <div style="color:#6E748C;font-size:11px;">Target {c['target']} \u00b7 Response {c['response']} ({c['response_rate']}%)</div>
                     </div>
                     <span class="status-badge {'status-offer' if c['status']=='Active' else 'status-applied'}">{c['status']}</span>
                 </div>
@@ -2670,7 +2698,7 @@ elif page == "career_intelligence":
         for role, data in sorted(ROLE_MARKET_DATA.items(), key=lambda kv: -kv[1]["salary_lpa"])[:6]:
             st.markdown(
                 f'<div class="market-row"><span>{role}</span>'
-                f'<span style="font-weight:700;color:#1E8E4C;">\u20b9{data["salary_lpa"]} LPA</span></div>',
+                f'<span style="font-weight:700;color:#1C8647;">\u20b9{data["salary_lpa"]} LPA</span></div>',
                 unsafe_allow_html=True,
             )
 
@@ -2709,7 +2737,7 @@ elif page == "videos":
                         <div class="video-card">
                             <div class="video-thumb">&#9654;</div>
                             <div style="font-weight:700; color:#24243B; font-size:14px;">{title}</div>
-                            <div style="color:#8A8FA3; font-size:11px; margin-bottom:6px;">{duration} watch</div>
+                            <div style="color:#6E748C; font-size:11px; margin-bottom:6px;">{duration} watch</div>
                             <div style="color:#5A5E73; font-size:12px;">{desc}</div>
                         </div>
                         """,
@@ -2941,8 +2969,8 @@ elif page == "settings":
                          display:flex;align-items:center;justify-content:center;color:white;font-size:24px;
                          font-weight:700;margin:0 auto 10px auto;">{initials(prof.get('name','FORGE AI'))}</div>
                     <div style="font-weight:700; font-size:16px; color:#24243B;">{prof.get('name','-')}</div>
-                    <div style="color:#8A8FA3; font-size:12px;">{prof.get('role','-')}</div>
-                    <div style="color:#8A8FA3; font-size:12px;">{prof.get('country','-')}</div>
+                    <div style="color:#6E748C; font-size:12px;">{prof.get('role','-')}</div>
+                    <div style="color:#6E748C; font-size:12px;">{prof.get('country','-')}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -2971,7 +2999,7 @@ elif page == "settings":
 
             st.markdown("##### Skills")
             skills = prof.get("key_skills", [])
-            st.markdown("".join(f'<span class="voice-tag">{s}</span>' for s in skills) or "<span style='color:#8A8FA3;font-size:12px;'>No skills listed yet.</span>", unsafe_allow_html=True)
+            st.markdown("".join(f'<span class="voice-tag">{s}</span>' for s in skills) or "<span style='color:#6E748C;font-size:12px;'>No skills listed yet.</span>", unsafe_allow_html=True)
 
             st.write("")
             if st.button("Edit Profile", type="primary"):

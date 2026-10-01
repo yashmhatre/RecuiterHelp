@@ -38,12 +38,12 @@ TIMEOUT_SECONDS = 120
 
 # The client's tokens, from app.py. Not re-chosen here.
 INK = "#24243B"
-MUTED = "#8A8FA3"
+MUTED = "#6E748C"   # was #8A8FA3: 3.21:1 on white, fails AA for body text
 ACCENT = "#5B4CF2"
 TINT = "#ECEEF6"
-PASS = "#1E8E4C"
+PASS = "#1C8647"    # was #1E8E4C: 4.18:1, just under AA
 PASS_BG = "#E4F7EA"
-HOLD = "#B8790A"
+HOLD = "#A06909"    # was #B8790A: 3.63:1, large text only
 HOLD_BG = "#FFF4E0"
 STOP = "#C23636"
 
