@@ -183,13 +183,29 @@ def classify(email: RawEmail) -> tuple[dict[str, Any], str, int]:
         len(fields["skills"]) >= 2,
         fields["resume_requested"],
         fields["min_years_experience"] is not None,
+        bool(fields["candidate_names"]),
     ]
-    fields["contradiction"] = not fields["is_recruiter"] and sum(evidence) >= 2
+    # An intent only a recruiter email can have is a contradiction on its own, not half of one.
+    # Found on a synthetic interview email: "Interview scheduled for Meera Iyer tomorrow at
+    # 11 AM" came back is_recruiter=false with intent=interview. Scheduling an interview for a
+    # named candidate is not something a non-recruiter email does.
+    recruiter_only_intent = fields["intent"] in {
+        "new_requirement", "resume_request", "follow_up", "interview"
+    }
+    fields["contradiction"] = not fields["is_recruiter"] and (
+        recruiter_only_intent or sum(evidence) >= 2
+    )
     if fields["contradiction"]:
         fields["is_recruiter"] = True
         fields["confidence"] = min(fields["confidence"], 0.5)
         if fields["intent"] == "other":
             fields["intent"] = "resume_request" if fields["resume_requested"] else "new_requirement"
+
+    # A confidence of exactly 0.0 means the model failed its schema and we fell back to the safe
+    # default, not that it is certain this is not a recruiter. Treating those as a confident
+    # "no" silently discards the email; routing them to review keeps the failure visible.
+    if not fields["is_recruiter"] and fields["confidence"] == 0.0 and not fields["contradiction"]:
+        fields["model_uncertain"] = True
 
     # Deterministic backstop. The model may return no candidate_names at all -- the keyword
     # fallback never returns any -- and without this the named-person guard would never fire,
@@ -809,6 +825,19 @@ def run_pipeline(email: RawEmail, profiles: list[dict]) -> PipelineResult:
         )
     )
     if not fields["is_recruiter"]:
+        if fields.get("model_uncertain"):
+            # Confidence of exactly 0.0 is the schema-failure fallback, not a confident "no".
+            # Dropping it would be indistinguishable from the email never arriving.
+            result.stages.append(
+                Stage(
+                    "Model check", False,
+                    "The model returned no usable answer. Routed to Needs review rather than "
+                    "discarded.", {},
+                )
+            )
+            result.status = "needs_review"
+            result.label = LABEL_REVIEW
+            return result
         result.status = "not_recruiter"
         return result
     if not confident:

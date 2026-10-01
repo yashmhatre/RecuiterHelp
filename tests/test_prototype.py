@@ -727,3 +727,60 @@ def test_a_skill_named_only_in_the_summary_counts(resume_file):
 
     assert matches
     assert "4/4 must-have" in matches[0]["reason"]
+
+
+# ---------------------------------------------------------------------------
+# Contradiction and uncertainty guards
+# ---------------------------------------------------------------------------
+
+
+def test_a_recruiter_only_intent_contradicts_a_not_recruiter_verdict():
+    """Found on a synthetic set: "Interview scheduled for Meera Iyer tomorrow at 11 AM" came
+    back is_recruiter=false with intent=interview. Scheduling an interview for a named
+    candidate is not something a non-recruiter email does."""
+    from prototype import pipeline as pl
+
+    class FakeResult:
+        backend, model, latency_ms, raw = "fake", "fake", 0, ""
+        data = {
+            "is_recruiter": False, "confidence": 0.0, "intent": "interview",
+            "role": None, "skills": [], "min_years_experience": None, "location": None,
+            "candidate_names": ["Meera Iyer"], "resume_requested": False,
+        }
+
+    original = pl.llm.generate_json
+    pl.llm.generate_json = lambda *a, **k: FakeResult()
+    try:
+        fields, _, _ = pl.classify(
+            email("Interview scheduled for Meera Iyer tomorrow at 11 AM. Please confirm.")
+        )
+    finally:
+        pl.llm.generate_json = original
+
+    assert fields["contradiction"]
+    assert fields["is_recruiter"], "a recruiter-only intent must not be discarded"
+    assert fields["confidence"] <= 0.5, "but it should be low confidence, not trusted"
+
+
+def test_a_zero_confidence_refusal_goes_to_review_not_the_bin(profiles):
+    """Confidence of exactly 0.0 is the schema-failure fallback, not a confident no."""
+    from prototype import pipeline as pl
+
+    class FakeResult:
+        backend, model, latency_ms, raw = "fake", "fake", 0, ""
+        data = {
+            "is_recruiter": False, "confidence": 0.0, "intent": "other",
+            "role": None, "skills": [], "min_years_experience": None, "location": None,
+            "candidate_names": [], "resume_requested": False,
+        }
+
+    original = pl.llm.generate_json
+    pl.llm.generate_json = lambda *a, **k: FakeResult()
+    try:
+        result = pl.run_pipeline(email("send profiles"), profiles)
+    finally:
+        pl.llm.generate_json = original
+
+    assert result.status == "needs_review"
+    assert result.label == "Needs review"
+    assert result.draft is None
