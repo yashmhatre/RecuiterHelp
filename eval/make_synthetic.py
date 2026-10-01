@@ -232,6 +232,83 @@ def _vague(rng, *_):
     return lines, "other", True
 
 
+def _intake_sheet(rng, role, must, pref, nice, location, years):
+    """Internal agency broadcast: To self, Cc the team, JD attached. The vcreatek shape."""
+    lines = [
+        rng.choice(["Hi All", "Hi Team", "Dear All"]), "",
+        f"Please find attached the JD and Intake Sheet for the {role} role.", "",
+        f"{rng.choice(MUST_HEADINGS)}: {' + '.join(must)}",
+        f"{rng.choice(PREF_HEADINGS)}: {' + '.join(pref)}",
+        f"{rng.choice(NICE_HEADINGS)}: {', '.join(nice)}",
+        "",
+        f"Location: {location}",
+        f"Employment: {rng.choice(['Full-time', 'Contract - 12 months', 'Full-time (C2H)'])}",
+    ]
+    if years:
+        lines.append(f"Experience: {years}+ Years")
+    lines += [
+        "",
+        "You are requested to please share relevant and aligned profiles that closely match the "
+        "above skills and requirements.",
+        "",
+        "Please ensure the candidates have strong hands-on experience with the must-have skills "
+        "before sharing the profiles. Please treat this as urgent.",
+    ]
+    return lines, "new_requirement", True
+
+
+def _bulk_requirement(rng, role, must, pref, nice, location, years):
+    """Several roles in one email, which agencies send constantly."""
+    others = [r for r in ROLES if r != role]
+    second = rng.choice(others)
+    s_must = ROLES[second][0]
+    lines = [
+        "Hi,", "",
+        "Please find below our open positions for this week. Share profiles for any that match.",
+        "",
+        f"1) {role} - {location} - {years or 4}+ yrs",
+        f"   Skills: {', '.join(must)}",
+        "",
+        f"2) {second} - {rng.choice(LOCATIONS)} - {rng.choice([3, 5, 6])}+ yrs",
+        f"   Skills: {', '.join(s_must)}",
+        "",
+        "Kindly share CVs with current CTC, expected CTC and notice period.",
+    ]
+    return lines, "new_requirement", True
+
+
+def _intake_with_screening(rng, role, must, pref, nice, location, years):
+    """Requirement plus a screening checklist the agency must fill in per candidate."""
+    lines = [
+        "Hi,", "",
+        f"We have an urgent requirement for a {role}. JD below.", "",
+        f"{rng.choice(MUST_HEADINGS)}: {', '.join(must)}",
+        f"{rng.choice(NICE_HEADINGS)}: {', '.join(nice)}",
+        "",
+        f"Location: {location}",
+        "",
+        "Please share profiles along with the following details for each candidate:",
+        "", "Total Experience:", "Relevant Experience:", "Current Location:",
+        "Current CTC:", "Expected CTC:", "Notice Period:", "Contact Number:",
+    ]
+    return lines, "new_requirement", True
+
+
+def _rejection_feedback(rng, role, must, pref, nice, location, years):
+    """Client feedback on a submitted candidate. Still a recruiter email."""
+    person = rng.choice(["Asha Menon", "Meera Iyer", "Rohit Nair", "Karan Shah"])
+    lines = [
+        "Hi,", "",
+        rng.choice([
+            f"Client has shared feedback on {person} for the {role} role - they are looking for "
+            "stronger hands-on depth. Please share alternate profiles.",
+            f"{person} did not clear the technical round. Could you send two or three more "
+            f"profiles for the {role} position?",
+        ]),
+    ]
+    return lines, "follow_up", True, [person]
+
+
 # ---------------------------------------------------------------------------
 # Negatives, modelled on what a real inbox actually contains
 # ---------------------------------------------------------------------------
@@ -291,9 +368,11 @@ def generate(count: int, seed: int = 20261001) -> list[dict]:
     rng = random.Random(seed)
     records: list[dict] = []
 
+    # Weighted toward the agency shapes, because that is the mailbox this product is for.
     builders = [
-        (_tiered_requirement, 0.30), (_plain_requirement, 0.25), (_resume_request, 0.18),
-        (_follow_up, 0.10), (_interview, 0.09), (_vague, 0.08),
+        (_intake_sheet, 0.20), (_tiered_requirement, 0.14), (_plain_requirement, 0.14),
+        (_intake_with_screening, 0.12), (_bulk_requirement, 0.08), (_resume_request, 0.12),
+        (_rejection_feedback, 0.06), (_follow_up, 0.05), (_interview, 0.05), (_vague, 0.04),
     ]
     weights = [w for _, w in builders]
 
@@ -313,10 +392,10 @@ def generate(count: int, seed: int = 20261001) -> list[dict]:
         lines, intent = result[0], result[1]
         names = result[3] if len(result) > 3 else []
 
+        tiered = builder in (_tiered_requirement, _intake_sheet, _intake_with_screening)
         if builder is not _vague:
             lines += ["", rng.choice(SIGNOFFS).format(name=name, agency=agency)]
 
-        tiered = builder is _tiered_requirement
         subject = {
             "new_requirement": rng.choice([
                 f"New opening | {role}", f"Requirement - {role} - {location}",
@@ -337,11 +416,13 @@ def generate(count: int, seed: int = 20261001) -> list[dict]:
             is_recruiter=True, intent=intent,
             fields={
                 "role": None if builder is _vague else role,
-                "skills": [] if builder in (_vague, _follow_up, _interview)
+                "skills": [] if builder in (_vague, _follow_up, _interview, _rejection_feedback)
                           else [s.lower() for s in (must + pref + nice if tiered else must + pref[:1])],
                 "min_years_experience": float(years) if years and builder in
-                                        (_tiered_requirement, _plain_requirement) else None,
-                "location": None if builder in (_vague, _follow_up, _interview) else location,
+                                        (_tiered_requirement, _plain_requirement, _intake_sheet,
+                                         _bulk_requirement) else None,
+                "location": None if builder in (_vague, _follow_up, _interview,
+                                                _rejection_feedback) else location,
                 "candidate_names": names,
                 "resume_requested": intent in {"resume_request", "new_requirement"},
             },
@@ -370,6 +451,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--count", type=int, default=60, help="How many records (default 60).")
     parser.add_argument("--seed", type=int, default=20261001, help="For reproducibility.")
     parser.add_argument("--out", type=Path, default=OUT_PATH)
+    parser.add_argument(
+        "--to-staging",
+        action="store_true",
+        help="Also queue them unlabelled for the Label tab, so they can be labelled by hand.",
+    )
     args = parser.parse_args(argv)
 
     records = generate(args.count, args.seed)
@@ -388,8 +474,56 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  recruiter      {recruiters} ({recruiters / len(records):.0%})")
     print(f"  not recruiter  {len(records) - recruiters}")
     print(f"  intents        {intents}")
-    print("\n  These are for exercising the pipeline. Not for training, and not an accuracy")
-    print("  number. Real labelled mail is ticket P1-05.")
+    if args.to_staging:
+        # Strip the answers. Labelling a record that already carries its own ground truth
+        # teaches nothing; the point of queueing these is to read them the way a labeller will,
+        # and to notice where a generated email reads as obviously fake.
+        try:
+            from eval.label_cli import LABELS_PATH, STAGING_PATH
+        except ModuleNotFoundError:
+            # Running as a script rather than a module, so the repo root is not importable.
+            import sys
+
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+            from eval.label_cli import LABELS_PATH, STAGING_PATH
+
+        existing: set[str] = set()
+        for path in (STAGING_PATH, LABELS_PATH):
+            if path.is_file():
+                with open(path, encoding="utf-8") as handle:
+                    for line in handle:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            existing.add(json.loads(line)["id"])
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+
+        STAGING_PATH.parent.mkdir(parents=True, exist_ok=True)
+        queued = 0
+        with open(STAGING_PATH, "a", encoding="utf-8") as handle:
+            for r in records:
+                if r["id"] in existing:
+                    continue
+                handle.write(
+                    json.dumps(
+                        {
+                            "id": r["id"], "provider": r["provider"], "headers": r["headers"],
+                            "subject": r["subject"], "body_text": r["body_text"],
+                            "_labelled": False,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+                queued += 1
+        print(f"\n  Queued {queued} for labelling in {STAGING_PATH}")
+        print("  Open the Label tab to work through them.")
+
+    print("\n  These exercise the pipeline and prove the training machinery runs. They are not a")
+    print("  substitute for real labelled mail: a classifier trained on them learns these")
+    print("  templates rather than how recruiters write. Real mail is ticket P1-05.")
     return 0
 
 
