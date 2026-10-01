@@ -125,24 +125,29 @@ def render(st, render_gauge) -> None:
 
 
 def _render_form(st, info: dict, has_result: bool) -> None:
-    with st.expander("Screen another email" if has_result else "Screen an email", expanded=not has_result):
-        with st.form("exeliq_email_agent_form"):
-            left, right = st.columns(2)
-            with left:
-                sender = st.text_input("From", placeholder="Priya Sharma <priya@agency.com>")
-            with right:
-                subject = st.text_input("Subject", placeholder="Requirement: Senior Data Engineer")
-            body = st.text_area("Email body", height=190,
-                                placeholder="Paste the recruiter's email here")
-            submitted = st.form_submit_button("Screen this email", type="primary")
+    if has_result:
+        st.markdown(
+            f'<div style="font-size:15px;font-weight:700;color:{INK};margin:20px 0 6px;">'
+            f'Screen another email</div>',
+            unsafe_allow_html=True,
+        )
+    with st.form("exeliq_email_agent_form"):
+        left, right = st.columns(2)
+        with left:
+            sender = st.text_input("From", placeholder="Priya Sharma <priya@agency.com>")
+        with right:
+            subject = st.text_input("Subject", placeholder="Requirement: Senior Data Engineer")
+        body = st.text_area("Email body", height=190,
+                            placeholder="Paste the recruiter's email here")
+        submitted = st.form_submit_button("Screen this email", type="primary")
 
-        if submitted:
-            if not sender.strip() or not body.strip():
-                st.warning("Add a sender and the email body, then try again.")
-            else:
-                with st.spinner("Reading the email, matching candidates, writing the reply"):
-                    st.session_state.exeliq_email_result = screen_email(sender, subject, body)
-                st.rerun()
+    if submitted:
+        if not sender.strip() or not body.strip():
+            st.warning("Add a sender and the email body, then try again.")
+        else:
+            with st.spinner("Reading the email, matching candidates, writing the reply"):
+                st.session_state.exeliq_email_result = screen_email(sender, subject, body)
+            st.rerun()
 
     st.markdown(
         f'<div style="color:{MUTED};font-size:12px;margin-top:10px;">'

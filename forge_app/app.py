@@ -982,8 +982,19 @@ st.markdown(
        Fira Code where figures need to line up. */
     @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
 
-    html, body, [class*="st-"], .stApp, button, input, textarea, select {
-        font-family: 'Fira Sans', -apple-system, 'Segoe UI', Roboto, sans-serif !important;
+    /* Scoped deliberately. An earlier version matched [class*="st-"] with !important, which
+       also hit Streamlit's Material Icons elements: the chevron on an expander renders its
+       glyph from a ligature, so overriding the font made it print the literal text
+       "arrow_down" on top of the label. Icon fonts are excluded and then restored below. */
+    html, body, .stApp, p, span, div, label, li, td, th,
+    button, input, textarea, select, h1, h2, h3, h4, h5, h6 {
+        font-family: 'Fira Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    }
+    /* Streamlit's icons must keep their own font or they render as words. */
+    [data-testid="stIconMaterial"], .material-icons, .material-icons-outlined,
+    [class*="material-symbols"], [data-testid*="Icon"] span,
+    span[translate="no"] {
+        font-family: 'Material Symbols Rounded', 'Material Icons' !important;
     }
     /* Figures that get compared sit in tabular monospace so columns align. */
     .metric-value, .forge-figure { font-family: 'Fira Code', ui-monospace, monospace !important;
