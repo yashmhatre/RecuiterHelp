@@ -15,7 +15,9 @@ import base64
 import hashlib
 import json
 import os
+import random
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.message import EmailMessage
@@ -52,6 +54,58 @@ _OAUTHLIB_SWITCHES = ("OAUTHLIB_INSECURE_TRANSPORT", "OAUTHLIB_RELAX_TOKEN_SCOPE
 
 AI_DRAFT_LABEL = "AI Draft"
 NEEDS_REVIEW_LABEL = "Needs review"
+
+
+#: Gmail charges quota units per call and enforces a per-user-per-minute ceiling. Pulling a few
+#: hundred messages for labelling blows through it in seconds, and the API answers 403
+#: rateLimitExceeded -- which is retryable, not fatal. Google's documented remedy is exponential
+#: backoff, so that is what this does.
+_RETRYABLE_REASONS = {"rateLimitExceeded", "userRateLimitExceeded", "backendError", "quotaExceeded"}
+_RETRYABLE_STATUS = {403, 429, 500, 502, 503, 504}
+
+#: Small gap between message fetches. Cheaper than discovering the ceiling and backing off.
+THROTTLE_SECONDS = float(os.environ.get("GMAIL_THROTTLE_SECONDS", "0.12"))
+
+
+def _execute(request, *, attempts: int = 6):
+    """Run one Gmail API request, retrying the failures that are worth retrying.
+
+    Raises GmailError with a readable message once the attempts are spent, rather than letting
+    an HttpError traceback reach the UI.
+    """
+    from googleapiclient.errors import HttpError
+
+    delay = 1.0
+    last: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            return request.execute()
+        except HttpError as exc:
+            status = getattr(exc.resp, "status", None)
+            reason = ""
+            try:
+                detail = json.loads(exc.content.decode("utf-8"))
+                errors = detail.get("error", {}).get("errors") or [{}]
+                reason = errors[0].get("reason", "")
+            except Exception:  # noqa: BLE001 - the body is not always JSON
+                pass
+
+            retryable = status in _RETRYABLE_STATUS and (
+                reason in _RETRYABLE_REASONS or status in {429, 500, 502, 503, 504}
+            )
+            if not retryable or attempt == attempts - 1:
+                if status == 403 and reason in _RETRYABLE_REASONS:
+                    raise GmailError(
+                        "Gmail's rate limit is still refusing requests after several retries. "
+                        "Wait a minute, then pull a smaller batch."
+                    ) from exc
+                raise GmailError(f"Gmail refused the request ({status} {reason})".strip()) from exc
+
+            last = exc
+            time.sleep(delay + random.uniform(0, 0.4))
+            delay = min(delay * 2, 16.0)
+
+    raise GmailError(f"Gmail request failed after {attempts} attempts: {last}")
 
 
 class GmailError(RuntimeError):
@@ -224,7 +278,7 @@ def _service(creds):
 
 
 def address_of(creds) -> str:
-    profile = _service(creds).users().getProfile(userId="me").execute()
+    profile = _execute(_service(creds).users().getProfile(userId="me"))
     return profile.get("emailAddress", "")
 
 
@@ -347,7 +401,7 @@ def fetch_one(message_id: str) -> RawEmail:
         raise GmailError("Not connected to Gmail.")
     service = _service(creds)
     try:
-        full = service.users().messages().get(userId="me", id=message_id, format="full").execute()
+        full = _execute(service.users().messages().get(userId="me", id=message_id, format="full"))
     except Exception as exc:  # noqa: BLE001 - surfaced to the UI
         raise GmailError(f"Could not read message {message_id}: {exc}") from exc
     return to_raw_email(full, address_of(creds))
@@ -367,11 +421,10 @@ def fetch_recent(limit: int = 15, query: str = "in:inbox -category:promotions") 
     stubs: list[dict] = []
     page_token = None
     while len(stubs) < wanted:
-        listing = (
+        listing = _execute(
             service.users().messages()
             .list(userId="me", maxResults=min(100, wanted - len(stubs)), q=query,
                   pageToken=page_token)
-            .execute()
         )
         stubs.extend(listing.get("messages", []))
         page_token = listing.get("nextPageToken")
@@ -379,11 +432,12 @@ def fetch_recent(limit: int = 15, query: str = "in:inbox -category:promotions") 
             break
 
     emails: list[RawEmail] = []
-    for stub in stubs[:wanted]:
-        full = (
-            service.users().messages()
-            .get(userId="me", id=stub["id"], format="full")
-            .execute()
+    for index, stub in enumerate(stubs[:wanted]):
+        if index and THROTTLE_SECONDS:
+            # Stay under the per-minute ceiling rather than discovering it and backing off.
+            time.sleep(THROTTLE_SECONDS)
+        full = _execute(
+            service.users().messages().get(userId="me", id=stub["id"], format="full")
         )
         emails.append(to_raw_email(full, self_address))
     return emails
@@ -423,15 +477,14 @@ def staging_record(email: RawEmail) -> dict:
 
 
 def _ensure_label(service, name: str) -> str:
-    existing = service.users().labels().list(userId="me").execute().get("labels", [])
+    existing = _execute(service.users().labels().list(userId="me")).get("labels", [])
     for label in existing:
         if label.get("name") == name:
             return label["id"]
-    created = (
+    created = _execute(
         service.users().labels()
         .create(userId="me", body={"name": name, "labelListVisibility": "labelShow",
                                    "messageListVisibility": "show"})
-        .execute()
     )
     return created["id"]
 
@@ -442,9 +495,9 @@ def apply_label(provider_message_id: str, label: str) -> None:
         raise GmailError("Not connected to Gmail.")
     service = _service(creds)
     label_id = _ensure_label(service, label)
-    service.users().messages().modify(
+    _execute(service.users().messages().modify(
         userId="me", id=provider_message_id, body={"addLabelIds": [label_id]}
-    ).execute()
+    ))
 
 
 def save_draft(draft: dict[str, Any], source: RawEmail) -> dict[str, str]:
@@ -482,10 +535,9 @@ def save_draft(draft: dict[str, Any], source: RawEmail) -> dict[str, str]:
         )
 
     encoded = base64.urlsafe_b64encode(bytes(message)).decode()
-    created = (
+    created = _execute(
         service.users().drafts()
         .create(userId="me", body={"message": {"raw": encoded, "threadId": source.thread_id}})
-        .execute()
     )
     return {
         "draft_id": created.get("id", ""),
