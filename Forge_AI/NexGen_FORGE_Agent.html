@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NexGen FORGE Agent — Exeliq Consulting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+:root {
+  --bg: #0A0C10;
+  --bg2: #0F1117;
+  --bg3: #161820;
+  --border: #1E2130;
+  --border2: #252840;
+  --text1: #E8EAF0;
+  --text2: #8B8FA8;
+  --text3: #4E5268;
+  --accent: #3D6EF5;
+  --accent2: #1A3BA8;
+  --accent-glow: rgba(61,110,245,0.15);
+  --green: #22C55E;
+  --green-bg: rgba(34,197,94,0.1);
+  --amber: #F59E0B;
+  --amber-bg: rgba(245,158,11,0.1);
+  --red: #EF4444;
+  --red-bg: rgba(239,68,68,0.1);
+  --purple: #A78BFA;
+  --purple-bg: rgba(167,139,250,0.1);
+  --cyan: #22D3EE;
+  --cyan-bg: rgba(34,211,238,0.08);
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Inter', sans-serif;
+  --r: 6px;
+  --r2: 10px;
+  --sidebar: 220px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text1); min-height: 100vh; display: flex; font-size: 14px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: var(--sidebar); flex-shrink: 0; background: var(--bg2);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  position: fixed; top: 0; left: 0; height: 100vh; z-index: 100; overflow-y: auto;
+}
+.sb-brand {
+  padding: 18px 16px 14px; border-bottom: 1px solid var(--border);
+}
+.sb-logo {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 4px;
+}
+.sb-logo-icon {
+  width: 32px; height: 32px; border-radius: var(--r);
+  background: var(--accent); display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 16px var(--accent-glow);
+}
+.sb-name { font-size: 13px; font-weight: 600; color: var(--text1); letter-spacing: 0.02em; }
+.sb-sub { font-size: 10px; color: var(--text3); margin-top: 1px; letter-spacing: 0.04em; }
+.sb-live { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--green); margin-top: 10px; font-weight: 500; }
+.sb-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: blink 2s infinite; }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
+
+.sb-section { padding: 12px 10px 4px; }
+.sb-section-label { font-size: 9px; font-weight: 600; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; padding: 0 6px; margin-bottom: 4px; }
+.sb-item {
+  display: flex; align-items: center; gap: 9px; padding: 7px 8px;
+  border-radius: var(--r); cursor: pointer; margin-bottom: 1px;
+  font-size: 12px; color: var(--text2); transition: all 0.15s; border: 1px solid transparent;
+}
+.sb-item:hover { background: var(--bg3); color: var(--text1); }
+.sb-item.active { background: var(--accent-glow); color: var(--accent); border-color: rgba(61,110,245,0.2); }
+.sb-item-icon { width: 18px; text-align: center; flex-shrink: 0; font-size: 14px; }
+.sb-item-badge {
+  margin-left: auto; font-size: 9px; font-weight: 600; padding: 2px 6px;
+  border-radius: 10px; background: var(--bg3); color: var(--text3);
+}
+.sb-item.active .sb-item-badge { background: rgba(61,110,245,0.2); color: var(--accent); }
+
+.sb-status-block {
+  margin: auto 0 0; padding: 12px 16px; border-top: 1px solid var(--border);
+}
+.sb-status-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.sb-status-label { font-size: 10px; color: var(--text3); }
+.sb-status-val { font-size: 11px; font-weight: 500; color: var(--text2); }
+
+/* ── MAIN ── */
+.main { margin-left: var(--sidebar); flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+.topbar {
+  height: 52px; border-bottom: 1px solid var(--border); display: flex; align-items: center;
+  justify-content: space-between; padding: 0 24px; background: var(--bg2);
+  position: sticky; top: 0; z-index: 50;
+}
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.topbar-page { font-size: 14px; font-weight: 500; color: var(--text1); }
+.topbar-crumb { font-size: 12px; color: var(--text3); }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.tb-pill { font-size: 11px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border2); color: var(--text2); }
+.tb-pill.green { border-color: rgba(34,197,94,0.3); color: var(--green); background: var(--green-bg); }
+
+.content { padding: 24px; flex: 1; }
+
+/* ── METRICS ── */
+.metrics-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 10px; margin-bottom: 24px; }
+.mc {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2);
+  padding: 14px 16px; position: relative; overflow: hidden;
+}
+.mc::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; border-radius:var(--r2) var(--r2) 0 0; }
+.mc.blue::before{background:var(--accent);}
+.mc.green::before{background:var(--green);}
+.mc.amber::before{background:var(--amber);}
+.mc.purple::before{background:var(--purple);}
+.mc.cyan::before{background:var(--cyan);}
+.mc-label { font-size: 10px; color: var(--text3); letter-spacing: 0.05em; text-transform: uppercase; font-weight: 500; margin-bottom: 6px; }
+.mc-val { font-size: 26px; font-weight: 500; color: var(--text1); font-variant-numeric: tabular-nums; }
+.mc-sub { font-size: 10px; color: var(--text3); margin-top: 3px; }
+
+/* ── INPUT PANEL ── */
+.input-panel {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2);
+  margin-bottom: 20px; overflow: hidden;
+}
+.ip-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+}
+.ip-title { font-size: 13px; font-weight: 500; color: var(--text1); display: flex; align-items: center; gap: 8px; }
+.ip-tabs { display: flex; gap: 2px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 2px; }
+.ip-tab { font-size: 11px; padding: 4px 12px; border-radius: 4px; cursor: pointer; color: var(--text3); font-weight: 500; transition: all 0.15s; }
+.ip-tab.sel { background: var(--bg2); color: var(--text1); }
+
+.ip-body { padding: 16px 20px; }
+.input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.inp-block { display: flex; flex-direction: column; gap: 5px; }
+.inp-block.full { grid-column: 1/-1; }
+.inp-label { font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.07em; text-transform: uppercase; }
+textarea, select, input[type=text] {
+  width: 100%; background: var(--bg); border: 1px solid var(--border2); border-radius: var(--r);
+  color: var(--text1); font-family: var(--sans); font-size: 12px; padding: 8px 10px;
+  outline: none; transition: border-color 0.15s;
+}
+textarea:focus, select:focus, input[type=text]:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
+select { cursor: pointer; }
+
+.route-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg);
+}
+.route-bar-label { font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; margin-right: 4px; }
+.r-chip {
+  font-size: 10px; font-weight: 500; padding: 4px 10px; border-radius: 20px;
+  cursor: pointer; border: 1px solid var(--border2); color: var(--text3); transition: all 0.15s;
+}
+.r-chip.on { border-color: rgba(61,110,245,0.4); color: var(--accent); background: var(--accent-glow); }
+
+.ip-footer {
+  display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+.run-btn {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500;
+  padding: 9px 20px; border-radius: var(--r); cursor: pointer;
+  background: var(--accent); color: #fff; border: none; transition: all 0.2s;
+  box-shadow: 0 0 20px rgba(61,110,245,0.3);
+}
+.run-btn:hover { background: #5580FF; box-shadow: 0 0 28px rgba(61,110,245,0.45); }
+.run-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.sample-btn {
+  font-size: 12px; padding: 8px 14px; border-radius: var(--r); cursor: pointer;
+  background: transparent; border: 1px solid var(--border2); color: var(--text2); transition: all 0.15s;
+}
+.sample-btn:hover { border-color: var(--border2); color: var(--text1); background: var(--bg3); }
+.clear-btn {
+  font-size: 12px; padding: 8px 14px; border-radius: var(--r); cursor: pointer;
+  background: transparent; border: 1px solid var(--border2); color: var(--text3); transition: all 0.15s; margin-left: auto;
+}
+.clear-btn:hover { color: var(--red); border-color: rgba(239,68,68,0.3); }
+
+/* ── THINKING STRIP ── */
+.thinking-strip {
+  display: none; align-items: center; gap: 10px; padding: 10px 16px;
+  background: var(--amber-bg); border: 1px solid rgba(245,158,11,0.2);
+  border-radius: var(--r); margin-bottom: 16px; font-size: 12px; color: var(--amber);
+}
+.spinner { width: 14px; height: 14px; border: 1.5px solid rgba(245,158,11,0.3); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── PIPELINE BAR ── */
+.pipeline-bar {
+  display: flex; border: 1px solid var(--border); border-radius: var(--r2);
+  overflow: hidden; margin-bottom: 20px;
+}
+.ps {
+  flex: 1; padding: 8px 4px; text-align: center; font-size: 9px; font-weight: 600;
+  color: var(--text3); background: var(--bg2); border-right: 1px solid var(--border);
+  text-transform: uppercase; letter-spacing: 0.05em; transition: all 0.3s; line-height: 1.4;
+}
+.ps:last-child { border-right: none; }
+.ps.done { background: var(--green-bg); color: var(--green); }
+.ps.running { background: var(--amber-bg); color: var(--amber); }
+
+/* ── AGENTS GRID ── */
+.section-label { font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px; }
+.agents-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 24px; }
+.ag {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2);
+  padding: 14px; transition: border-color 0.2s; position: relative; overflow: hidden;
+}
+.ag::after { content:''; position:absolute; bottom:0; left:0; right:0; height:2px; opacity:0; transition:opacity 0.3s; }
+.ag.running { border-color: rgba(245,158,11,0.4); }
+.ag.running::after { background: var(--amber); opacity: 1; }
+.ag.done { border-color: rgba(34,197,94,0.3); }
+.ag.done::after { background: var(--green); opacity: 1; }
+.ag-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
+.ag-icon { width: 32px; height: 32px; border-radius: var(--r); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.ag-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 4px; }
+.dot-idle { background: var(--text3); }
+.dot-run { background: var(--amber); animation: blink 1s infinite; }
+.dot-done { background: var(--green); }
+.ag-name { font-size: 12px; font-weight: 600; color: var(--text1); }
+.ag-role { font-size: 10px; color: var(--text3); margin-top: 1px; }
+.ag-out { font-size: 10px; color: var(--text2); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); min-height: 32px; line-height: 1.5; }
+
+/* ── RESULTS ── */
+.results-panel {
+  display: none; background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--r2); overflow: hidden; margin-bottom: 24px;
+}
+.rp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+  background: linear-gradient(90deg, var(--green-bg), transparent);
+}
+.rp-title { font-size: 13px; font-weight: 500; color: var(--green); display: flex; align-items: center; gap: 8px; }
+.rp-ts { font-size: 10px; color: var(--text3); }
+
+.result-tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 20px; overflow-x: auto; }
+.rt { font-size: 11px; font-weight: 500; padding: 10px 14px; cursor: pointer; color: var(--text3); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: all 0.15s; }
+.rt:hover { color: var(--text2); }
+.rt.sel { color: var(--accent); border-bottom-color: var(--accent); }
+.rt-pane { display: none; padding: 20px; }
+.rt-pane.active { display: block; }
+
+/* Result components */
+.score-hero { display: flex; align-items: center; gap: 20px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r2); margin-bottom: 14px; }
+.score-num { font-size: 48px; font-weight: 300; color: var(--text1); font-variant-numeric: tabular-nums; line-height: 1; }
+.score-details .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; margin-bottom: 6px; }
+.tag-ready { background: var(--green-bg); color: var(--green); }
+.tag-near { background: var(--amber-bg); color: var(--amber); }
+.tag-build { background: var(--red-bg); color: var(--red); }
+.tag-must { background: rgba(61,110,245,0.12); color: #7DA4FF; }
+.tag-nice { background: var(--bg3); color: var(--text2); }
+.tag-cluster { background: var(--purple-bg); color: var(--purple); }
+.tag-flag { background: var(--amber-bg); color: var(--amber); }
+.tag-match { background: var(--green-bg); color: var(--green); }
+.tag-gap { background: var(--red-bg); color: var(--red); }
+
+.skill-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.stag { font-size: 10px; font-weight: 500; padding: 3px 8px; border-radius: 4px; }
+
+.dr { display: flex; justify-content: space-between; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.dr:last-child { border-bottom: none; }
+.dr-l { color: var(--text3); }
+.dr-r { color: var(--text1); font-weight: 500; text-align: right; max-width: 60%; }
+
+.conf-row { display: flex; align-items: center; gap: 10px; font-size: 11px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+.conf-row:last-child { border-bottom: none; }
+.conf-lbl { min-width: 140px; color: var(--text3); }
+.conf-track { flex: 1; height: 3px; background: var(--bg); border-radius: 2px; overflow: hidden; }
+.conf-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+.conf-pct { font-size: 10px; color: var(--text3); min-width: 28px; text-align: right; }
+
+.section-head { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin: 14px 0 6px; }
+.bullet { font-size: 12px; color: var(--text2); padding: 6px 0; border-bottom: 1px solid var(--border); line-height: 1.5; }
+.bullet:last-child { border-bottom: none; }
+.bullet.good { color: var(--green); }
+.bullet.bad { color: var(--red); }
+
+.gap-card { padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 8px; }
+.gap-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.gap-card-name { font-size: 12px; font-weight: 600; color: var(--text1); }
+.sev-badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+.sev5,.sev4 { background: var(--red-bg); color: var(--red); }
+.sev3 { background: var(--amber-bg); color: var(--amber); }
+.sev2,.sev1 { background: var(--green-bg); color: var(--green); }
+.gap-reason { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+.gap-fix { font-size: 11px; color: var(--green); }
+
+.post-box { background: var(--bg); border: 1px solid var(--border2); border-radius: var(--r2); padding: 16px; font-size: 13px; color: var(--text1); line-height: 1.8; white-space: pre-wrap; }
+
+.json-view { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r); padding: 14px; font-size: 10px; font-family: var(--mono); line-height: 1.7; color: #7DA4FF; white-space: pre-wrap; word-break: break-all; max-height: 320px; overflow-y: auto; }
+
+.sim-box { background: var(--bg); border: 1px solid rgba(239,68,68,0.2); border-radius: var(--r2); padding: 14px; margin-bottom: 10px; }
+.sim-title { font-size: 12px; font-weight: 600; color: var(--red); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.sim-alert { font-size: 13px; color: var(--text1); line-height: 1.6; margin-bottom: 10px; padding: 10px; background: var(--red-bg); border-radius: var(--r); border: 1px solid rgba(239,68,68,0.2); }
+
+/* ── ACTION ROW ── */
+.action-row { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 20px; border-top: 1px solid var(--border); }
+.act-btn { font-size: 11px; font-weight: 500; padding: 7px 14px; border-radius: var(--r); cursor: pointer; background: transparent; border: 1px solid var(--border2); color: var(--text2); transition: all 0.15s; }
+.act-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+
+/* ── VIEWS ── */
+.view { display: none; }
+.view.active { display: block; }
+
+/* ── SCHEDULE TABLE ── */
+.sched-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sched-table th { text-align: left; font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.sched-table td { padding: 10px 0; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: top; }
+.sched-table td:first-child { color: var(--text1); font-weight: 500; width: 140px; }
+.sched-table tr:last-child td { border-bottom: none; }
+.time-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border2); color: var(--accent); font-family: var(--mono); }
+
+/* ── SYSTEM PROMPT VIEW ── */
+.sp-block { background: var(--bg); border: 1px solid var(--border); border-radius: var(--r2); padding: 16px; margin-bottom: 14px; }
+.sp-label { font-size: 9px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+.sp-text { font-size: 12px; color: var(--text2); line-height: 1.75; }
+.sp-code { font-family: var(--mono); font-size: 11px; color: var(--cyan); background: var(--bg2); border-radius: var(--r); padding: 12px; margin-top: 8px; line-height: 1.7; border: 1px solid var(--border); white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+
+/* ── EXPORT VIEW ── */
+.export-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r2); padding: 14px 16px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+.export-name { font-size: 12px; font-weight: 500; color: var(--text1); }
+.export-desc { font-size: 10px; color: var(--text3); margin-top: 2px; }
+.export-btn { font-size: 11px; padding: 6px 14px; border-radius: var(--r); cursor: pointer; background: transparent; border: 1px solid var(--border2); color: var(--text2); transition: all 0.15s; }
+.export-btn:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <div class="sb-logo-icon"><i class="ti ti-cpu" style="color:#fff;font-size:17px"></i></div>
+      <div>
+        <div class="sb-name">NexGen FORGE</div>
+        <div class="sb-sub">Exeliq Consulting</div>
+      </div>
+    </div>
+    <div class="sb-live"><div class="sb-live-dot"></div> All systems operational</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-section-label">Pipeline</div>
+    <div class="sb-item active" onclick="showView('dashboard',this)">
+      <span class="sb-item-icon"><i class="ti ti-layout-dashboard"></i></span> Dashboard
+    </div>
+    <div class="sb-item" onclick="showView('schedule',this)">
+      <span class="sb-item-icon"><i class="ti ti-clock"></i></span> Schedule
+    </div>
+    <div class="sb-item" onclick="showView('sysprompt',this)">
+      <span class="sb-item-icon"><i class="ti ti-terminal-2"></i></span> System Prompts
+    </div>
+    <div class="sb-item" onclick="showView('export',this)">
+      <span class="sb-item-icon"><i class="ti ti-download"></i></span> Export & Deploy
+    </div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-section-label">Agents</div>
+    <div class="sb-item" onclick="showView('dashboard',this);setTimeout(()=>scrollToAgent(1),100)">
+      <span class="sb-item-icon"><i class="ti ti-file-text"></i></span> JD Intake
+      <span class="sb-item-badge" id="sb-badge-1">Idle</span>
+    </div>
+    <div class="sb-item" onclick="showView('dashboard',this);setTimeout(()=>scrollToAgent(2),100)">
+      <span class="sb-item-icon"><i class="ti ti-users"></i></span> Matching
+      <span class="sb-item-badge" id="sb-badge-2">Idle</span>
+    </div>
+    <div class="sb-item" onclick="showView('dashboard',this);setTimeout(()=>scrollToAgent(3),100)">
+      <span class="sb-item-icon"><i class="ti ti-file-cv"></i></span> Resume Engine
+      <span class="sb-item-badge" id="sb-badge-3">Idle</span>
+    </div>
+    <div class="sb-item" onclick="showView('dashboard',this);setTimeout(()=>scrollToAgent(4),100)">
+      <span class="sb-item-icon"><i class="ti ti-list-check"></i></span> Task Plan
+      <span class="sb-item-badge" id="sb-badge-4">Idle</span>
+    </div>
+    <div class="sb-item" onclick="showView('dashboard',this);setTimeout(()=>scrollToAgent(5),100)">
+      <span class="sb-item-icon"><i class="ti ti-bolt"></i></span> Simulation
+      <span class="sb-item-badge" id="sb-badge-5">Idle</span>
+    </div>
+    <div class="sb-item" onclick="showView('dashboard',this);setTimeout(()=>scrollToAgent(6),100)">
+      <span class="sb-item-icon"><i class="ti ti-chart-bar"></i></span> Gap Detect
+      <span class="sb-item-badge" id="sb-badge-6">Idle</span>
+    </div>
+    <div class="sb-item" onclick="showView('dashboard',this);setTimeout(()=>scrollToAgent(7),100)">
+      <span class="sb-item-icon"><i class="ti ti-brand-linkedin"></i></span> LinkedIn
+      <span class="sb-item-badge" id="sb-badge-7">Idle</span>
+    </div>
+    <div class="sb-item" onclick="showView('dashboard',this);setTimeout(()=>scrollToAgent(8),100)">
+      <span class="sb-item-icon"><i class="ti ti-refresh"></i></span> Post-Interview
+      <span class="sb-item-badge" id="sb-badge-8">Idle</span>
+    </div>
+  </div>
+
+  <div class="sb-status-block">
+    <div class="sb-status-row">
+      <span class="sb-status-label">Active agents</span>
+      <span class="sb-status-val" id="sb-active">0 / 8</span>
+    </div>
+    <div class="sb-status-row">
+      <span class="sb-status-label">Last run</span>
+      <span class="sb-status-val" id="sb-lastrun">—</span>
+    </div>
+    <div class="sb-status-row">
+      <span class="sb-status-label">Match score</span>
+      <span class="sb-status-val" id="sb-score">—</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-left">
+      <span class="topbar-crumb">FORGE</span>
+      <span class="topbar-crumb" style="color:var(--border2)">/</span>
+      <span class="topbar-page" id="topbar-page">Dashboard</span>
+    </div>
+    <div class="topbar-right">
+      <span class="tb-pill">ARC · Strategy & Oversight</span>
+      <span class="tb-pill green" id="tb-status">● Pipeline ready</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ═══ DASHBOARD VIEW ═══ -->
+    <div class="view active" id="view-dashboard">
+
+      <div class="metrics-grid">
+        <div class="mc blue"><div class="mc-label">Agents active</div><div class="mc-val" id="m-active">0</div><div class="mc-sub" id="m-active-sub">of 8 total</div></div>
+        <div class="mc green"><div class="mc-label">Match score</div><div class="mc-val" id="m-score">—</div><div class="mc-sub" id="m-score-sub">JD vs resume</div></div>
+        <div class="mc amber"><div class="mc-label">Skills matched</div><div class="mc-val" id="m-skills">—</div><div class="mc-sub">of required</div></div>
+        <div class="mc purple"><div class="mc-label">Gaps detected</div><div class="mc-val" id="m-gaps">—</div><div class="mc-sub">priority fixes</div></div>
+        <div class="mc cyan"><div class="mc-label">Pipeline stage</div><div class="mc-val" style="font-size:16px;margin-top:4px" id="m-stage">Ready</div><div class="mc-sub">current</div></div>
+      </div>
+
+      <!-- INPUT PANEL -->
+      <div class="input-panel">
+        <div class="ip-header">
+          <div class="ip-title"><i class="ti ti-input-search" style="font-size:16px"></i> Inputs</div>
+          <div class="ip-tabs">
+            <div class="ip-tab sel" onclick="switchInputTab('jd',this)">JD + Resume</div>
+            <div class="ip-tab" onclick="switchInputTab('linkedin',this)">LinkedIn URL</div>
+            <div class="ip-tab" onclick="switchInputTab('feedback',this)">Interview Feedback</div>
+          </div>
+        </div>
+        <div class="ip-body">
+          <div id="in-jd">
+            <div class="input-grid">
+              <div class="inp-block">
+                <div class="inp-label">Job Description</div>
+                <textarea id="jd-text" placeholder="Paste full JD — role title, responsibilities, required skills, qualifications, preferred skills..."></textarea>
+              </div>
+              <div class="inp-block">
+                <div class="inp-label">Candidate Resume</div>
+                <textarea id="res-text" placeholder="Paste candidate resume — experience, projects, skills, education, achievements..."></textarea>
+              </div>
+              <div class="inp-block">
+                <div class="inp-label">Candidate Name</div>
+                <input type="text" id="cand-name" placeholder="e.g. Vaibhav Bhogle">
+              </div>
+              <div class="inp-block">
+                <div class="inp-label">Role Domain</div>
+                <select id="domain">
+                  <option>Data Engineering</option>
+                  <option>Databricks / CDP</option>
+                  <option>Cloud / DevOps</option>
+                  <option>Data Science / ML</option>
+                  <option>Full Stack</option>
+                  <option>IT Infrastructure</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div id="in-linkedin" style="display:none">
+            <div class="inp-block full">
+              <div class="inp-label">LinkedIn Profile URL or Paste Profile Text</div>
+              <textarea id="li-text" placeholder="Paste LinkedIn profile — headline, about section, experience, skills, endorsements..."></textarea>
+            </div>
+          </div>
+          <div id="in-feedback" style="display:none">
+            <div class="inp-block full">
+              <div class="inp-label">Post-Interview Feedback (voice transcript or text)</div>
+              <textarea id="fb-text" placeholder="Paste candidate debrief — what went well, what failed, specific questions they struggled with, interviewer comments..."></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="route-bar">
+          <span class="route-bar-label">Route to</span>
+          <div class="r-chip on" id="chip-1" onclick="toggleChip(this)"><i class="ti ti-file-text" style="font-size:10px"></i> JD Intake</div>
+          <div class="r-chip on" id="chip-2" onclick="toggleChip(this)"><i class="ti ti-users" style="font-size:10px"></i> Matching</div>
+          <div class="r-chip on" id="chip-3" onclick="toggleChip(this)"><i class="ti ti-file-cv" style="font-size:10px"></i> Resume Engine</div>
+          <div class="r-chip on" id="chip-4" onclick="toggleChip(this)"><i class="ti ti-list-check" style="font-size:10px"></i> Task Plan</div>
+          <div class="r-chip on" id="chip-5" onclick="toggleChip(this)"><i class="ti ti-bolt" style="font-size:10px"></i> Simulation</div>
+          <div class="r-chip on" id="chip-6" onclick="toggleChip(this)"><i class="ti ti-chart-bar" style="font-size:10px"></i> Gap Detect</div>
+          <div class="r-chip on" id="chip-7" onclick="toggleChip(this)"><i class="ti ti-brand-linkedin" style="font-size:10px"></i> LinkedIn</div>
+          <div class="r-chip on" id="chip-8" onclick="toggleChip(this)"><i class="ti ti-refresh" style="font-size:10px"></i> Post-Interview</div>
+        </div>
+        <div class="ip-footer">
+          <button class="run-btn" id="run-btn" onclick="runPipeline()"><i class="ti ti-player-play"></i> Run NexGen Pipeline</button>
+          <button class="sample-btn" onclick="loadSample()"><i class="ti ti-file-import" style="font-size:12px"></i> Load sample data</button>
+          <button class="clear-btn" onclick="clearAll()"><i class="ti ti-trash" style="font-size:12px"></i> Clear</button>
+        </div>
+      </div>
+
+      <!-- THINKING -->
+      <div class="thinking-strip" id="thinking-strip">
+        <div class="spinner"></div>
+        <span id="thinking-text">Initialising pipeline...</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--text3)" id="thinking-step"></span>
+      </div>
+
+      <!-- PIPELINE BAR -->
+      <div class="pipeline-bar">
+        <div class="ps" id="ps1">JD Intake</div>
+        <div class="ps" id="ps2">Matching</div>
+        <div class="ps" id="ps3">Resume</div>
+        <div class="ps" id="ps4">Task Plan</div>
+        <div class="ps" id="ps5">Simulation</div>
+        <div class="ps" id="ps6">Gap Detect</div>
+        <div class="ps" id="ps7">LinkedIn</div>
+        <div class="ps" id="ps8">Post-Interview</div>
+      </div>
+
+      <!-- AGENT CARDS -->
+      <div class="section-label">Agent status</div>
+      <div class="agents-grid" id="agents-grid"></div>
+
+      <!-- RESULTS -->
+      <div class="results-panel" id="results-panel">
+        <div class="rp-header">
+          <div class="rp-title"><i class="ti ti-check-circle" style="font-size:16px"></i> Pipeline complete — full output</div>
+          <span class="rp-ts" id="rp-ts"></span>
+        </div>
+        <div class="result-tabs">
+          <div class="rt sel" onclick="switchRTab('jd',this)">JD Parsed</div>
+          <div class="rt" onclick="switchRTab('match',this)">Match Score</div>
+          <div class="rt" onclick="switchRTab('resume',this)">Resume Gaps</div>
+          <div class="rt" onclick="switchRTab('tasks',this)">30-Day Plan</div>
+          <div class="rt" onclick="switchRTab('sim',this)">Scenario</div>
+          <div class="rt" onclick="switchRTab('gap',this)">Gap Report</div>
+          <div class="rt" onclick="switchRTab('li',this)">LinkedIn Post</div>
+          <div class="rt" onclick="switchRTab('json',this)">Full JSON</div>
+        </div>
+        <div class="rt-pane active" id="rtp-jd"></div>
+        <div class="rt-pane" id="rtp-match"></div>
+        <div class="rt-pane" id="rtp-resume"></div>
+        <div class="rt-pane" id="rtp-tasks"></div>
+        <div class="rt-pane" id="rtp-sim"></div>
+        <div class="rt-pane" id="rtp-gap"></div>
+        <div class="rt-pane" id="rtp-li"></div>
+        <div class="rt-pane" id="rtp-json"></div>
+        <div class="action-row">
+          <button class="act-btn" onclick="exportJSON()"><i class="ti ti-download" style="font-size:12px"></i> Export JSON</button>
+          <button class="act-btn" onclick="copyReport()"><i class="ti ti-copy" style="font-size:12px"></i> Copy report</button>
+          <button class="act-btn" onclick="showView('export',null)"><i class="ti ti-rocket" style="font-size:12px"></i> Deploy to pipeline</button>
+          <button class="act-btn" onclick="runPipeline()"><i class="ti ti-refresh" style="font-size:12px"></i> Re-run with new data</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ SCHEDULE VIEW ═══ -->
+    <div class="view" id="view-schedule">
+      <div style="margin-bottom:20px">
+        <div style="font-size:18px;font-weight:500;color:var(--text1);margin-bottom:4px">Daily Automation Schedule</div>
+        <div style="font-size:12px;color:var(--text3)">All 8 agents · trigger logic · IST timezone</div>
+      </div>
+      <div class="sp-block">
+        <div class="sp-label">Agent 1 — JD Intake</div>
+        <table class="sched-table">
+          <thead><tr><th style="width:160px">Trigger</th><th style="width:150px">Time</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td>Morning scan</td><td><span class="time-badge">08:00 IST</span></td><td>Scan email inbox + LinkedIn feeds + job portals. Parse all overnight JDs and queue for Matching Agent.</td></tr>
+            <tr><td>Scheduled poll</td><td><span class="time-badge">Every 2h</span></td><td>Check for new emails with JD keywords. Parse new JDs. Skip duplicates via MD5 hash check.</td></tr>
+            <tr><td>Webhook trigger</td><td><span class="time-badge">On arrival</span></td><td>Zapier watches inbox label "JD-Intake". New email → immediate parse → push to queue.</td></tr>
+            <tr><td>Manual trigger</td><td><span class="time-badge">On demand</span></td><td>Paste JD text in dashboard → instant structured JSON output.</td></tr>
+            <tr><td>Nightly summary</td><td><span class="time-badge">22:00 IST</span></td><td>Compile day's JD queue. Push summary to Slack #jd-intake.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sp-block">
+        <div class="sp-label">Agent 2 — Candidate Matching</div>
+        <table class="sched-table">
+          <thead><tr><th style="width:160px">Trigger</th><th style="width:150px">Time</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td>Pipeline trigger</td><td><span class="time-badge">After Agent 1</span></td><td>Score all candidates in pool against each new JD. Tag Ready / Near-ready / Build.</td></tr>
+            <tr><td>Daily rescan</td><td><span class="time-badge">07:00 IST</span></td><td>Full candidate pool rescan against all active JDs. Refresh rankings.</td></tr>
+            <tr><td>New candidate</td><td><span class="time-badge">On upload</span></td><td>New resume uploaded → auto-score against all active JDs → notify recruiter.</td></tr>
+            <tr><td>Priority alert</td><td><span class="time-badge">Immediate</span></td><td>Score >85 → instant WhatsApp/email alert to recruiter with candidate summary.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="sp-block">
+        <div class="sp-label">Agents 3–8 — Sequential Pipeline</div>
+        <table class="sched-table">
+          <thead><tr><th style="width:160px">Agent</th><th style="width:150px">Trigger</th><th>Daily action</th></tr></thead>
+          <tbody>
+            <tr><td>Resume Engine</td><td><span class="time-badge">On match ≥60</span></td><td>Auto-rewrite resume for ATS. Fix keyword gaps. Flag unresolvable mismatches.</td></tr>
+            <tr><td>Task Plan</td><td><span class="time-badge">After resume</span></td><td>Generate or update 30-day prep plan. Send daily task reminder at 09:00 IST.</td></tr>
+            <tr><td>Simulation</td><td><span class="time-badge">18:00 IST daily</span></td><td>Run 45-min live failure scenario per active candidate. Score and hand off to Gap Detect.</td></tr>
+            <tr><td>Gap Detect</td><td><span class="time-badge">After simulation</span></td><td>Multi-signal analysis. Output gap report. Weekly trend rollup every Sunday 08:00 IST.</td></tr>
+            <tr><td>LinkedIn</td><td><span class="time-badge">21:00 IST daily</span></td><td>Generate post from day's insights. Schedule for 08:00 IST next day. 3 posts/week cadence.</td></tr>
+            <tr><td>Post-Interview</td><td><span class="time-badge">Within 2h</span></td><td>Collect feedback. Re-detect gaps. Assign replay scenario. Update readiness threshold.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ SYSTEM PROMPT VIEW ═══ -->
+    <div class="view" id="view-sysprompt">
+      <div style="margin-bottom:20px">
+        <div style="font-size:18px;font-weight:500;color:var(--text1);margin-bottom:4px">System Prompts — All 8 Agents</div>
+        <div style="font-size:12px;color:var(--text3)">Production-ready prompts. Copy → deploy to your AI orchestration layer.</div>
+      </div>
+
+      <div class="sp-block">
+        <div class="sp-label">Agent 1 — JD Intake Agent</div>
+        <div class="sp-text">Parses raw JD text into structured JSON. Never hallucinates. Flags ambiguity at &lt;60% confidence.</div>
+        <div class="sp-code">You are a specialist JD parsing agent for Exeliq Consulting's FORGE pipeline. Convert raw job description text into structured JSON. Never guess — flag ambiguity.
+
+Extract exactly: job_title, seniority (Junior/Mid/Senior/Lead/Principal), cluster (Data Engineering/Cloud DevOps/Databricks CDP/Full Stack/Data Science ML/IT Infrastructure/Other), must_have_skills[], nice_to_have_skills[], business_impact_keywords[], ambiguity_flags[], ats_weights{skill:1-10}, parse_confidence{field:0-100}.
+
+Rules: Output valid JSON only. No prose. No markdown. If confidence &lt;60% on any field, set to null and add to ambiguity_flags. Never add skills not in the JD. Set review_required:true if ambiguity_flags has 3+ items. Set pipeline_next:"candidate_matching_agent".</div>
+      </div>
+
+      <div class="sp-block">
+        <div class="sp-label">Agent 2 — Candidate Matching Agent</div>
+        <div class="sp-text">Scores candidates 0–100 across skill overlap, experience depth, recency, domain alignment.</div>
+        <div class="sp-code">You are a technical talent matcher for an IT staffing firm. Given a JD and candidate profile, score and return JSON only.
+
+Score across: skill_overlap (0-100), experience_depth (0-100), recency (0-100), domain_alignment (0-100), overall_score (weighted average).
+Tag: Ready (overall>80), Near-ready (60-80), Build (&lt;60).
+Output: {overall_score, tag, matched_skills[], missing_skills[], skill_match_pct, experience_alignment, years_experience, summary (2 sentences), recommendation, pipeline_next:"resume_engine_agent"}
+
+Never fabricate skills. Base every score on explicit evidence in the resume.</div>
+      </div>
+
+      <div class="sp-block">
+        <div class="sp-label">Agent 3 — Resume Engine Agent</div>
+        <div class="sp-text">ATS-optimises resumes. Rewrites weak bullets. Fixes keyword gaps. Flags unresolvable mismatches.</div>
+        <div class="sp-code">You are a technical resume specialist for IT consulting placements. Analyse the resume against the JD and return JSON only.
+
+Output: {ats_score (0-100), keyword_gaps[], weak_bullets[], rewrite_suggestions[], missing_quantifications[], critical_mismatches[], overall_verdict (1 sentence), pipeline_next:"task_plan_agent"}
+
+Rewrite rules: Use JD exact keywords. Quantify impact. Mirror seniority language. Never add false experience. Flag anything that cannot be fixed without fabrication in critical_mismatches.</div>
+      </div>
+
+      <div class="sp-block">
+        <div class="sp-label">Agent 4 — Task Plan Agent</div>
+        <div class="sp-text">Converts skill gaps into a personalised 30-day adaptive prep roadmap with daily micro-tasks.</div>
+        <div class="sp-code">You are a technical interview prep coach for data engineering placements. Generate a 30-day adaptive task plan and return JSON only.
+
+Output: {week1[], week2[], week3[], week4[], priority_topics[], daily_time_mins, readiness_target, milestones{week:string}, pipeline_next:"simulation_agent"}
+
+Rules: Weight tasks by JD ATS importance score. Mark each week's theme. Prioritise missing skills from matching output. Keep each task actionable in 1 sentence. Do not repeat topics across weeks.</div>
+      </div>
+
+      <div class="sp-block">
+        <div class="sp-label">Agent 5 — Simulation Agent</div>
+        <div class="sp-text">Live failure scenario engine. Role-assigned. Quantified business impact. Dynamic pressure escalation.</div>
+        <div class="sp-code">You are a demanding senior engineer running a live system incident simulation. Assign the candidate a role based on seniority. Present a production failure scenario calibrated to their domain.
+
+Output scenario JSON: {scenario_title, role_assigned (On-call/Senior/Lead), business_impact, initial_alert, pressure_signals[], expected_actions[], scoring_criteria[], escalation_triggers[], pipeline_next:"gap_detection_agent"}
+
+Scenario rules: Impact must be quantified (revenue, users, SLA). Signals must be ambiguous — never hand the answer. Include 2 red herrings. Scoring must cover: clarity, decision speed, question quality, pressure handling.</div>
+      </div>
+
+      <div class="sp-block">
+        <div class="sp-label">Agent 6 — Gap Detection Agent</div>
+        <div class="sp-text">5-signal multi-dimensional gap analysis. Severity 1–5. Confidence scored. Fix assigned per gap.</div>
+        <div class="sp-code">You are a technical gap detection specialist. Analyse candidate data across 5 signals and return JSON only.
+
+Signals: Clarity (did they explain precisely?), Decision (was the action correct?), Technical (do they know the domain?), Pressure (did they hold under stress?), Timing (did they move fast enough?).
+
+Output: {gaps:[{gap_name, severity (1-5), signal, reasoning, confidence_pct, fix}], overall_readiness, top_priority_fix, pipeline_next:"linkedin_visibility_agent"}
+
+Never assign severity 5 without direct evidence. Confidence must reflect actual signal strength, not assumption.</div>
+      </div>
+
+      <div class="sp-block">
+        <div class="sp-label">Agent 7 — LinkedIn Visibility Agent</div>
+        <div class="sp-text">Technical insight posts from FORGE data. Failure-based storytelling. Scheduled for peak engagement.</div>
+        <div class="sp-code">You are a technical LinkedIn content strategist for Exeliq Consulting. Convert FORGE pipeline insights into high-value posts. Return JSON only.
+
+Output: {post_text (max 200 words), best_time, estimated_reach, content_type, hashtags[3], cta_line, pipeline_next:"post_interview_loop_agent"}
+
+Writing rules: Open with a real failure scenario — no "I once..." clichés. Reveal the technical insight in sentence 3. Close with the lesson. Zero motivational filler. Senior, direct tone. No "game-changer" or "excited to share". Never mention the candidate by name.</div>
+      </div>
+
+      <div class="sp-block">
+        <div class="sp-label">Agent 8 — Post-Interview Loop Agent</div>
+        <div class="sp-text">Closes the feedback loop. Re-detects gaps. Assigns targeted replay. Tracks improvement trajectory.</div>
+        <div class="sp-code">You are a post-interview coaching specialist. Analyse interview feedback and return JSON only.
+
+Output: {failure_point, root_gap, severity (1-5), what_was_said, what_was_expected, replay_scenario_type, performance_threshold, improvement_tasks[], next_submission_readiness (Ready/Not ready), pipeline_next:"simulation_agent"}
+
+Rules: Always identify ONE specific root gap — not a list. The replay scenario must directly target the exact failure. Threshold must be measurable (e.g. "score 80+ on simulation"). Never recommend submission until threshold is hit.</div>
+      </div>
+    </div>
+
+    <!-- ═══ EXPORT VIEW ═══ -->
+    <div class="view" id="view-export">
+      <div style="margin-bottom:20px">
+        <div style="font-size:18px;font-weight:500;color:var(--text1);margin-bottom:4px">Export & Deploy</div>
+        <div style="font-size:12px;color:var(--text3)">Export configs, system prompts, and pipeline output for deployment.</div>
+      </div>
+      <div class="export-card">
+        <div><div class="export-name">Full system prompt bundle</div><div class="export-desc">All 8 agent prompts as a single JSON file ready for orchestration layer</div></div>
+        <button class="export-btn" onclick="exportSystemPrompts()"><i class="ti ti-download" style="font-size:12px"></i> Download JSON</button>
+      </div>
+      <div class="export-card">
+        <div><div class="export-name">Pipeline output (last run)</div><div class="export-desc">Complete structured output from most recent pipeline execution</div></div>
+        <button class="export-btn" onclick="exportJSON()"><i class="ti ti-download" style="font-size:12px"></i> Download JSON</button>
+      </div>
+      <div class="export-card">
+        <div><div class="export-name">Zapier automation blueprint</div><div class="export-desc">Step-by-step Zapier workflow config for email → JD Intake → Slack → CRM</div></div>
+        <button class="export-btn" onclick="copyZapierBlueprint()"><i class="ti ti-copy" style="font-size:12px"></i> Copy blueprint</button>
+      </div>
+      <div class="export-card">
+        <div><div class="export-name">Candidate report card</div><div class="export-desc">Formatted summary of match score, gaps, and 30-day plan for recruiter sharing</div></div>
+        <button class="export-btn" onclick="copyReport()"><i class="ti ti-copy" style="font-size:12px"></i> Copy report</button>
+      </div>
+      <div class="export-card">
+        <div><div class="export-name">Daily schedule config</div><div class="export-desc">Cron expressions and webhook specs for all 8 agents</div></div>
+        <button class="export-btn" onclick="copyCronConfig()"><i class="ti ti-copy" style="font-size:12px"></i> Copy config</button>
+      </div>
+      <div style="margin-top:20px;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2)">
+        <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.08em">Anthropic API key</div>
+        <div style="display:flex;gap:8px">
+          <input type="password" id="api-key-input" placeholder="sk-ant-..." style="flex:1;font-family:var(--mono)">
+          <button class="export-btn" onclick="saveApiKey()">Save key</button>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px">Key is stored in localStorage only. Never transmitted except to api.anthropic.com.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──
+const AGENTS_CONFIG = [
+  {id:1,name:'JD Intake',role:'Parser',icon:'ti-file-text',bg:'rgba(61,110,245,0.15)',ic:'#7DA4FF'},
+  {id:2,name:'Matching',role:'Ranker',icon:'ti-users',bg:'rgba(34,197,94,0.12)',ic:'#22C55E'},
+  {id:3,name:'Resume Engine',role:'ATS Builder',icon:'ti-file-cv',bg:'rgba(245,158,11,0.12)',ic:'#F59E0B'},
+  {id:4,name:'Task Plan',role:'Roadmap',icon:'ti-list-check',bg:'rgba(167,139,250,0.15)',ic:'#A78BFA'},
+  {id:5,name:'Simulation',role:'Pressure Engine',icon:'ti-bolt',bg:'rgba(239,68,68,0.12)',ic:'#EF4444'},
+  {id:6,name:'Gap Detect',role:'Signal Analyser',icon:'ti-chart-bar',bg:'rgba(34,211,238,0.1)',ic:'#22D3EE'},
+  {id:7,name:'LinkedIn',role:'Content & Schedule',icon:'ti-brand-linkedin',bg:'rgba(14,118,168,0.15)',ic:'#38BDF8'},
+  {id:8,name:'Post-Interview',role:'Feedback Loop',icon:'ti-refresh',bg:'rgba(148,163,184,0.1)',ic:'#94A3B8'}
+];
+
+let state = {};
+let fullOutput = {};
+AGENTS_CONFIG.forEach(a => state[a.id] = {status:'idle', output:''});
+
+// ── VIEWS ──
+function showView(id, el) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+id).classList.add('active');
+  document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('active'));
+  if(el) el.classList.add('active');
+  const labels = {dashboard:'Dashboard',schedule:'Daily Schedule',sysprompt:'System Prompts',export:'Export & Deploy'};
+  document.getElementById('topbar-page').textContent = labels[id]||id;
+}
+
+function scrollToAgent(id) {
+  const el = document.getElementById('ag-card-'+id);
+  if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+// ── RENDER AGENTS ──
+function renderAgents() {
+  const grid = document.getElementById('agents-grid');
+  grid.innerHTML = '';
+  AGENTS_CONFIG.forEach(ag => {
+    const st = state[ag.id];
+    const chipOn = document.getElementById('chip-'+ag.id)?.classList.contains('on') !== false;
+    let cardCls = '';
+    let dotCls = 'dot-idle';
+    let dotColor = 'var(--text3)';
+    if(st.status==='running'){cardCls='running';dotCls='dot-run';dotColor='var(--amber)';}
+    else if(st.status==='done'){cardCls='done';dotCls='dot-done';dotColor='var(--green)';}
+    const div = document.createElement('div');
+    div.className = 'ag' + (cardCls?' '+cardCls:'');
+    div.id = 'ag-card-'+ag.id;
+    div.style.opacity = chipOn===false?'0.35':'1';
+    div.innerHTML = `
+      <div class="ag-top">
+        <div class="ag-icon" style="background:${ag.bg}"><i class="ti ${ag.icon}" style="font-size:16px;color:${ag.ic}"></i></div>
+        <div class="ag-dot ${dotCls}" style="background:${dotColor}"></div>
+      </div>
+      <div class="ag-name">${ag.name}</div>
+      <div class="ag-role">${ag.role}</div>
+      <div class="ag-out" id="ag-out-${ag.id}">${st.output||'<span style="color:var(--text3)">Waiting for input...</span>'}</div>`;
+    grid.appendChild(div);
+  });
+}
+
+function setAgent(id, status, output) {
+  state[id] = {status, output};
+  const card = document.getElementById('ag-card-'+id);
+  if(card) {
+    card.className = 'ag' + (status==='running'?' running':status==='done'?' done':'');
+    const dot = card.querySelector('.ag-dot');
+    if(dot) { dot.className='ag-dot '+(status==='running'?'dot-run':status==='done'?'dot-done':'dot-idle'); }
+    const out = document.getElementById('ag-out-'+id);
+    if(out) out.innerHTML = output||'<span style="color:var(--text3)">Waiting...</span>';
+  }
+  const ps = document.getElementById('ps'+id);
+  if(ps) ps.className='ps'+(status==='running'?' running':status==='done'?' done':'');
+  const badge = document.getElementById('sb-badge-'+id);
+  if(badge) { badge.textContent = status==='running'?'Running':status==='done'?'Done':'Idle'; }
+}
+
+function updateMetrics(active, score, skills, gaps, stage) {
+  if(active!==null) { document.getElementById('m-active').textContent=active; document.getElementById('sb-active').textContent=active+' / 8'; }
+  if(score!==null) { document.getElementById('m-score').textContent=score; document.getElementById('sb-score').textContent=score; }
+  if(skills!==null) document.getElementById('m-skills').textContent=skills;
+  if(gaps!==null) document.getElementById('m-gaps').textContent=gaps;
+  if(stage!==null) document.getElementById('m-stage').textContent=stage;
+}
+
+// ── INPUT TABS ──
+function switchInputTab(id, el) {
+  ['jd','linkedin','feedback'].forEach(t=>document.getElementById('in-'+t).style.display=t===id?'block':'none');
+  document.querySelectorAll('.ip-tab').forEach(t=>t.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+function toggleChip(el) { el.classList.toggle('on'); }
+
+function switchRTab(id, el) {
+  document.querySelectorAll('.rt-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.rt').forEach(t=>t.classList.remove('sel'));
+  document.getElementById('rtp-'+id).classList.add('active');
+  el.classList.add('sel');
+}
+
+// ── SAMPLE DATA ──
+function loadSample() {
+  document.getElementById('jd-text').value = `Senior Data Engineer — Databricks & AWS\nLocation: Remote (USA) | Full-time | 6-8 years experience\n\nRequired: PySpark, Databricks (Delta Lake, Unity Catalog), AWS (S3, Glue, EMR), Kafka, Python, SQL at production level, data modelling, warehouse design.\nPreferred: dbt, Airflow, Terraform, Databricks certification.\n\nYou will build petabyte-scale real-time pipelines for zero-downtime deployments supporting $50M+ revenue-impacting data products. Strong collaboration with data scientists and business stakeholders required.`;
+  document.getElementById('res-text').value = `Vaibhav Bhogle — Senior Data Engineer, 7 years experience.\nSkills: PySpark, Python, SQL, Databricks, Delta Lake, AWS S3, AWS Glue, Kafka, Apache Airflow, data modelling.\nProjects: Real-time ingestion pipeline (500GB/day) at HDFC Bank. Migrated Hadoop cluster to Databricks at TCS.\nNo Terraform or dbt experience. No Unity Catalog exposure.\nEducation: B.Tech Computer Science, Pune University 2017.`;
+  document.getElementById('cand-name').value = 'Vaibhav Bhogle';
+  document.getElementById('domain').value = 'Databricks / CDP';
+}
+
+function clearAll() {
+  ['jd-text','res-text','cand-name','li-text','fb-text'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  fullOutput = {};
+  AGENTS_CONFIG.forEach(a=>setAgent(a.id,'idle',''));
+  document.getElementById('results-panel').style.display='none';
+  updateMetrics(0,null,null,null,'Ready');
+  document.getElementById('thinking-strip').style.display='none';
+  document.getElementById('tb-status').textContent='● Pipeline ready';
+  document.getElementById('tb-status').className='tb-pill green';
+  document.getElementById('sb-lastrun').textContent='—';
+}
+
+// ── CLAUDE API ──
+async function callClaude(sys, user) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,system:sys,messages:[{role:'user',content:user}]})
+  });
+  const data = await resp.json();
+  const raw = (data.content||[]).map(b=>b.text||'').join('').trim();
+  try { return JSON.parse(raw.replace(/```json|```/g,'').trim()); }
+  catch(e) { return {_raw:raw}; }
+}
+
+function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+
+function tagHtml(arr,cls) {
+  if(!arr||!arr.length) return '<span style="color:var(--text3);font-size:11px">None</span>';
+  return arr.map(s=>`<span class="stag ${cls}">${s}</span>`).join('');
+}
+
+function confBarsHtml(obj) {
+  if(!obj) return '';
+  return Object.entries(obj).map(([k,v])=>{
+    const p=Math.round(v||0);
+    return `<div class="conf-row"><span class="conf-lbl">${k.replace(/_/g,' ')}</span><div class="conf-track"><div class="conf-fill" style="width:${p}%"></div></div><span class="conf-pct">${p}%</span></div>`;
+  }).join('');
+}
+
+// ── MAIN PIPELINE ──
+async function runPipeline() {
+  const jd = document.getElementById('jd-text').value.trim();
+  const resume = document.getElementById('res-text').value.trim();
+  const name = document.getElementById('cand-name').value.trim() || 'Candidate';
+  const domain = document.getElementById('domain').value;
+  if(!jd) { alert('Please paste a job description to run the pipeline.'); return; }
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  const thinking = document.getElementById('thinking-strip');
+  const thinkTxt = document.getElementById('thinking-text');
+  const thinkStep = document.getElementById('thinking-step');
+  thinking.style.display = 'flex';
+  document.getElementById('results-panel').style.display = 'none';
+  document.getElementById('tb-status').textContent = '◉ Pipeline running';
+  document.getElementById('tb-status').className = 'tb-pill';
+
+  AGENTS_CONFIG.forEach(a=>setAgent(a.id,'idle',''));
+  fullOutput = {};
+  updateMetrics(0,null,null,null,'Running');
+
+  const activeAgents = AGENTS_CONFIG.filter(a=>document.getElementById('chip-'+a.id)?.classList.contains('on')).length;
+  updateMetrics(activeAgents,null,null,null,null);
+
+  try {
+    // ── AGENT 1: JD INTAKE ──
+    if(document.getElementById('chip-1')?.classList.contains('on')) {
+      setAgent(1,'running','Parsing job description...');
+      thinkTxt.textContent='Agent 1 · JD Intake — parsing structure...';
+      thinkStep.textContent='1 / 8';
+      updateMetrics(null,null,null,null,'JD Intake');
+      const r = await callClaude(
+        `You are a JD parsing specialist for an IT staffing firm. Return ONLY valid JSON. No markdown, no prose.
+Schema: {"job_title":"string","seniority":"Junior|Mid|Senior|Lead|Principal","cluster":"string","must_have_skills":[],"nice_to_have_skills":[],"business_impact_keywords":[],"ambiguity_flags":[],"ats_weights":{},"parse_confidence":{"job_title":0,"seniority":0,"cluster":0,"must_have_skills":0,"nice_to_have_skills":0},"review_required":false,"pipeline_next":"candidate_matching_agent"}
+Rules: Never hallucinate skills. Flag vague requirements. Set review_required true if 3+ ambiguity_flags.`,
+        `Domain context: ${domain}\n\nJD text:\n${jd}`);
+      fullOutput.jd = r;
+      const mc = (r.must_have_skills||[]).length;
+      setAgent(1,'done',`<span style="color:var(--green)">${r.job_title||'Role parsed'}</span> · ${mc} must-have skills · ${(r.ambiguity_flags||[]).length} flags`);
+      document.getElementById('rtp-jd').innerHTML = `
+        <div class="dr"><span class="dr-l">Role title</span><span class="dr-r">${r.job_title||'—'}</span></div>
+        <div class="dr"><span class="dr-l">Seniority</span><span class="dr-r">${r.seniority||'—'}</span></div>
+        <div class="dr"><span class="dr-l">Cluster</span><span class="dr-r">${r.cluster||domain}</span></div>
+        <div class="dr"><span class="dr-l">Review required</span><span class="dr-r">${r.review_required?'<span style="color:var(--amber)">Yes</span>':'<span style="color:var(--green)">No</span>'}</span></div>
+        <div class="section-head">Must-have skills</div><div class="skill-tags">${tagHtml(r.must_have_skills,'stag tag-must')}</div>
+        <div class="section-head">Nice-to-have</div><div class="skill-tags">${tagHtml(r.nice_to_have_skills,'stag tag-nice')}</div>
+        <div class="section-head">Business impact keywords</div><div class="skill-tags">${tagHtml(r.business_impact_keywords,'stag tag-cluster')}</div>
+        <div class="section-head">Ambiguity flags</div><div class="skill-tags">${tagHtml(r.ambiguity_flags,'stag tag-flag')}</div>
+        <div class="section-head">Parse confidence</div>${confBarsHtml(r.parse_confidence)}`;
+    }
+    await sleep(300);
+
+    // ── AGENT 2: MATCHING ──
+    if(document.getElementById('chip-2')?.classList.contains('on') && resume) {
+      setAgent(2,'running','Scoring candidate vs JD...');
+      thinkTxt.textContent='Agent 2 · Matching — scoring candidate...';
+      thinkStep.textContent='2 / 8';
+      updateMetrics(null,null,null,null,'Matching');
+      const r = await callClaude(
+        `You are a technical talent matcher for IT staffing. Return ONLY valid JSON.
+Schema: {"overall_score":0,"tag":"Ready|Near-ready|Build","matched_skills":[],"missing_skills":[],"skill_match_pct":0,"experience_alignment":0,"years_experience":0,"summary":"","recommendation":"","pipeline_next":"resume_engine_agent"}
+Base every score on explicit evidence in the resume only.`,
+        `JD:\n${jd}\n\nResume of ${name}:\n${resume}`);
+      fullOutput.match = r;
+      const sc = Math.round(r.overall_score||0);
+      const pct = Math.round(r.skill_match_pct||0);
+      const tagCls = r.tag==='Ready'?'tag-ready':r.tag==='Near-ready'?'tag-near':'tag-build';
+      setAgent(2,'done',`<span class="stag ${tagCls}">${r.tag||'—'}</span> · Score: <span style="color:var(--text1);font-weight:600">${sc}/100</span> · ${pct}% skills matched`);
+      updateMetrics(null,sc+'%',pct+'%',null,null);
+      document.getElementById('sb-score').textContent = sc+'%';
+      document.getElementById('rtp-match').innerHTML = `
+        <div class="score-hero">
+          <div class="score-num">${sc}<span style="font-size:18px;color:var(--text3)">/100</span></div>
+          <div class="score-details">
+            <div class="tag ${tagCls}" style="display:inline-block">${r.tag||'—'}</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:4px;line-height:1.6">${r.summary||''}</div>
+          </div>
+        </div>
+        <div class="dr"><span class="dr-l">Skill match</span><span class="dr-r">${pct}%</span></div>
+        <div class="dr"><span class="dr-l">Experience alignment</span><span class="dr-r">${Math.round(r.experience_alignment||0)}%</span></div>
+        <div class="dr"><span class="dr-l">Years experience</span><span class="dr-r">${r.years_experience||'—'} years</span></div>
+        <div class="dr"><span class="dr-l">Recruiter action</span><span class="dr-r" style="color:var(--cyan)">${r.recommendation||'—'}</span></div>
+        <div class="section-head">Matched skills</div><div class="skill-tags">${tagHtml(r.matched_skills,'stag tag-match')}</div>
+        <div class="section-head">Missing skills (gaps)</div><div class="skill-tags">${tagHtml(r.missing_skills,'stag tag-gap')}</div>`;
+    }
+    await sleep(300);
+
+    // ── AGENT 3: RESUME ENGINE ──
+    if(document.getElementById('chip-3')?.classList.contains('on') && resume) {
+      setAgent(3,'running','Analysing ATS fit...');
+      thinkTxt.textContent='Agent 3 · Resume Engine — finding gaps...';
+      thinkStep.textContent='3 / 8';
+      updateMetrics(null,null,null,null,'Resume Engine');
+      const r = await callClaude(
+        `You are a technical resume specialist for IT consulting. Return ONLY valid JSON.
+Schema: {"ats_score":0,"keyword_gaps":[],"weak_bullets":[],"rewrite_suggestions":[],"missing_quantifications":[],"critical_mismatches":[],"overall_verdict":"","pipeline_next":"task_plan_agent"}
+Never fabricate experience. Flag anything unfixable in critical_mismatches.`,
+        `JD:\n${jd}\n\nResume:\n${resume}`);
+      fullOutput.resume = r;
+      setAgent(3,'done',`ATS score: <span style="color:var(--text1);font-weight:600">${Math.round(r.ats_score||0)}/100</span> · ${(r.keyword_gaps||[]).length} keyword gaps`);
+      document.getElementById('rtp-resume').innerHTML = `
+        <div class="dr"><span class="dr-l">ATS score</span><span class="dr-r">${Math.round(r.ats_score||0)}/100</span></div>
+        <div class="dr"><span class="dr-l">Verdict</span><span class="dr-r" style="text-align:left;color:var(--text2)">${r.overall_verdict||'—'}</span></div>
+        <div class="section-head">Keyword gaps — add these to resume</div><div class="skill-tags">${tagHtml(r.keyword_gaps,'stag tag-gap')}</div>
+        <div class="section-head">Weak bullets to rewrite</div>
+        ${(r.weak_bullets||[]).map(b=>`<div class="bullet bad">✗ ${b}</div>`).join('')}
+        <div class="section-head">Rewrite suggestions</div>
+        ${(r.rewrite_suggestions||[]).map(b=>`<div class="bullet good">✓ ${b}</div>`).join('')}
+        <div class="section-head">Missing quantifications</div>
+        ${(r.missing_quantifications||[]).map(b=>`<div class="bullet">→ ${b}</div>`).join('')}
+        ${(r.critical_mismatches||[]).length?`<div class="section-head" style="color:var(--red)">Critical mismatches (cannot fix without fabricating)</div>${r.critical_mismatches.map(b=>`<div class="bullet bad">⚠ ${b}</div>`).join('')}`:''}`;
+    }
+    await sleep(300);
+
+    // ── AGENT 4: TASK PLAN ──
+    if(document.getElementById('chip-4')?.classList.contains('on')) {
+      setAgent(4,'running','Building 30-day plan...');
+      thinkTxt.textContent='Agent 4 · Task Plan — creating roadmap...';
+      thinkStep.textContent='4 / 8';
+      updateMetrics(null,null,null,null,'Task Plan');
+      const r = await callClaude(
+        `You are a technical interview prep coach. Return ONLY valid JSON.
+Schema: {"week1":[],"week2":[],"week3":[],"week4":[],"priority_topics":[],"daily_time_mins":60,"readiness_target":"","milestones":{"Week 1":"","Week 2":"","Week 3":"","Week 4":""},"pipeline_next":"simulation_agent"}
+Each week array: 3-4 specific daily tasks. No repetition across weeks.`,
+        `Candidate: ${name} · Domain: ${domain}\nMissing skills: ${JSON.stringify(fullOutput.match?.missing_skills||[])}\nJD excerpt: ${jd.substring(0,400)}`);
+      fullOutput.tasks = r;
+      setAgent(4,'done',`30-day plan · ${(r.priority_topics||[]).length} priority topics · ${r.daily_time_mins||60} min/day`);
+      document.getElementById('rtp-tasks').innerHTML = `
+        <div class="dr"><span class="dr-l">Daily commitment</span><span class="dr-r">${r.daily_time_mins||60} min/day</span></div>
+        <div class="dr"><span class="dr-l">Readiness target</span><span class="dr-r" style="color:var(--green)">${r.readiness_target||'—'}</span></div>
+        <div class="section-head">Priority topics</div><div class="skill-tags" style="margin-bottom:14px">${tagHtml(r.priority_topics,'stag tag-cluster')}</div>
+        ${['week1','week2','week3','week4'].map((w,i)=>`
+          <div class="section-head">Week ${i+1} ${r.milestones?'— '+r.milestones['Week '+(i+1)]:''}
+          </div>${(r[w]||[]).map(t=>`<div class="bullet">• ${t}</div>`).join('')}`).join('')}`;
+    }
+    await sleep(300);
+
+    // ── AGENT 5: SIMULATION ──
+    if(document.getElementById('chip-5')?.classList.contains('on')) {
+      setAgent(5,'running','Designing failure scenario...');
+      thinkTxt.textContent='Agent 5 · Simulation — building scenario...';
+      thinkStep.textContent='5 / 8';
+      updateMetrics(null,null,null,null,'Simulation');
+      const r = await callClaude(
+        `You are a live failure scenario designer. Return ONLY valid JSON.
+Schema: {"scenario_title":"string","role_assigned":"On-call|Senior|Lead","business_impact":"string","initial_alert":"string","pressure_signals":[],"expected_actions":[],"scoring_criteria":[],"pipeline_next":"gap_detection_agent"}
+Impact must be quantified. Include 2 red herrings in signals. Scoring must cover clarity/decision/technical/pressure.`,
+        `Domain: ${domain} · Candidate level: ${fullOutput.jd?.seniority||'Senior'}\nKey skills: ${JSON.stringify((fullOutput.match?.matched_skills||[]).slice(0,4))}`);
+      fullOutput.simulation = r;
+      setAgent(5,'done',`Scenario: <span style="color:var(--text1)">${r.scenario_title||'—'}</span> · Role: ${r.role_assigned||'—'}`);
+      document.getElementById('rtp-sim').innerHTML = `
+        <div class="sim-box">
+          <div class="sim-title"><i class="ti ti-alert-triangle"></i> ${r.scenario_title||'Production Incident'}</div>
+          <div class="dr"><span class="dr-l">Role assigned</span><span class="dr-r" style="color:var(--red)">${r.role_assigned||'—'}</span></div>
+          <div class="dr"><span class="dr-l">Business impact</span><span class="dr-r" style="color:var(--amber)">${r.business_impact||'—'}</span></div>
+          <div class="section-head">Initial alert</div>
+          <div class="sim-alert">${r.initial_alert||'—'}</div>
+        </div>
+        <div class="section-head">Pressure signals (incl. red herrings)</div>
+        ${(r.pressure_signals||[]).map(s=>`<div class="bullet">⚡ ${s}</div>`).join('')}
+        <div class="section-head">Expected candidate actions</div>
+        ${(r.expected_actions||[]).map(s=>`<div class="bullet good">✓ ${s}</div>`).join('')}
+        <div class="section-head">Scoring criteria</div>
+        ${(r.scoring_criteria||[]).map(s=>`<div class="bullet">→ ${s}</div>`).join('')}`;
+    }
+    await sleep(300);
+
+    // ── AGENT 6: GAP DETECT ──
+    if(document.getElementById('chip-6')?.classList.contains('on')) {
+      setAgent(6,'running','Detecting skill gaps...');
+      thinkTxt.textContent='Agent 6 · Gap Detection — multi-signal analysis...';
+      thinkStep.textContent='6 / 8';
+      updateMetrics(null,null,null,null,'Gap Detect');
+      const r = await callClaude(
+        `You are a technical gap detection specialist. Return ONLY valid JSON.
+Schema: {"gaps":[{"gap_name":"","severity":1,"signal":"Clarity|Decision|Technical|Pressure|Timing","reasoning":"","confidence_pct":0,"fix":""}],"overall_readiness":"","top_priority_fix":"","pipeline_next":"linkedin_visibility_agent"}
+Never assign severity 5 without direct evidence. Max 4 gaps.`,
+        `Candidate: ${name} · Domain: ${domain}\nMissing: ${JSON.stringify(fullOutput.match?.missing_skills||[])}\nMatch score: ${fullOutput.match?.overall_score||0}\nATS score: ${fullOutput.resume?.ats_score||0}`);
+      fullOutput.gaps = r;
+      const gapCount = (r.gaps||[]).length;
+      updateMetrics(null,null,null,gapCount,null);
+      setAgent(6,'done',`${gapCount} gaps detected · Top fix: <span style="color:var(--cyan)">${r.top_priority_fix||'—'}</span>`);
+      document.getElementById('rtp-gap').innerHTML = `
+        <div class="dr"><span class="dr-l">Overall readiness</span><span class="dr-r" style="color:var(--text1)">${r.overall_readiness||'—'}</span></div>
+        <div class="dr"><span class="dr-l">Top priority fix</span><span class="dr-r" style="color:var(--cyan)">${r.top_priority_fix||'—'}</span></div>
+        <div class="section-head">Detected gaps</div>
+        ${(r.gaps||[]).map(g=>`
+          <div class="gap-card">
+            <div class="gap-card-top">
+              <div class="gap-card-name">${g.gap_name}</div>
+              <span class="sev-badge sev${g.severity}">Severity ${g.severity}/5</span>
+            </div>
+            <div class="gap-reason">${g.signal} signal · ${g.confidence_pct||0}% confidence — ${g.reasoning}</div>
+            <div class="gap-fix">↗ Fix: ${g.fix}</div>
+          </div>`).join('')}`;
+    }
+    await sleep(300);
+
+    // ── AGENT 7: LINKEDIN ──
+    if(document.getElementById('chip-7')?.classList.contains('on')) {
+      setAgent(7,'running','Generating post...');
+      thinkTxt.textContent='Agent 7 · LinkedIn — crafting insight post...';
+      thinkStep.textContent='7 / 8';
+      updateMetrics(null,null,null,null,'LinkedIn');
+      const r = await callClaude(
+        `You are a LinkedIn content strategist for an IT consulting firm. Return ONLY valid JSON.
+Schema: {"post_text":"(max 200 words, failure-based technical insight, no motivational cliches, direct senior tone, 3 hashtags at end)","best_time":"string","estimated_reach":"string","content_type":"string","pipeline_next":"post_interview_loop_agent"}
+No 'excited to share'. No 'game-changer'. Open with a failure scenario, not an opinion.`,
+        `Domain: ${domain} · Exeliq Consulting\nTop insight from pipeline: ${fullOutput.gaps?.top_priority_fix||'technical gap in '+domain}`);
+      fullOutput.linkedin = r;
+      setAgent(7,'done',`Post ready · ${r.content_type||'Technical insight'} · ${r.best_time||'8am IST'}`);
+      document.getElementById('rtp-li').innerHTML = `
+        <div class="dr"><span class="dr-l">Content type</span><span class="dr-r">${r.content_type||'—'}</span></div>
+        <div class="dr"><span class="dr-l">Best post time</span><span class="dr-r">${r.best_time||'—'}</span></div>
+        <div class="dr"><span class="dr-l">Est. reach</span><span class="dr-r">${r.estimated_reach||'—'}</span></div>
+        <div class="section-head">Draft post</div>
+        <div class="post-box">${r.post_text||'—'}</div>`;
+    }
+    await sleep(300);
+
+    // ── AGENT 8: POST-INTERVIEW ──
+    if(document.getElementById('chip-8')?.classList.contains('on')) {
+      setAgent(8,'running','Building feedback loop...');
+      thinkTxt.textContent='Agent 8 · Post-Interview — configuring loop...';
+      thinkStep.textContent='8 / 8';
+      updateMetrics(null,null,null,null,'Post-Interview');
+      await sleep(700);
+      const threshold = Math.min(99, Math.round((fullOutput.match?.overall_score||70)+10));
+      setAgent(8,'done',`Loop configured · Threshold: <span style="color:var(--text1)">${threshold}/100</span> · Replay assigned`);
+    }
+
+    // ── COMPLETE ──
+    fullOutput.meta = { candidate: name, domain, timestamp: new Date().toISOString(), pipeline_complete: true };
+    document.getElementById('rtp-json').innerHTML = `<div class="json-view">${JSON.stringify(fullOutput,null,2)}</div>`;
+
+    thinking.style.display = 'none';
+    btn.disabled = false;
+    document.getElementById('results-panel').style.display = 'block';
+    document.getElementById('rp-ts').textContent = new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit'}) + ' IST';
+    document.getElementById('tb-status').textContent = '● Pipeline complete';
+    document.getElementById('tb-status').className = 'tb-pill green';
+    document.getElementById('sb-lastrun').textContent = new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+    updateMetrics(null,null,null,null,'Complete');
+    document.getElementById('results-panel').scrollIntoView({behavior:'smooth',block:'start'});
+
+  } catch(err) {
+    thinking.style.display = 'none';
+    btn.disabled = false;
+    document.getElementById('tb-status').textContent = '⚠ Pipeline error';
+    document.getElementById('tb-status').className = 'tb-pill';
+    console.error('Pipeline error:', err);
+    alert('Pipeline error: ' + err.message + '\n\nCheck your API key in Export & Deploy tab.');
+  }
+}
+
+// ── EXPORT FUNCTIONS ──
+function exportJSON() {
+  if(!Object.keys(fullOutput).length) { alert('Run the pipeline first to generate output.'); return; }
+  const blob = new Blob([JSON.stringify(fullOutput,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='nexgen-forge-output-'+Date.now()+'.json'; a.click();
+}
+
+function exportSystemPrompts() {
+  const prompts = {
+    agent1_jd_intake: "You are a JD parsing specialist for Exeliq Consulting's FORGE pipeline. Return only valid JSON with fields: job_title, seniority, cluster, must_have_skills, nice_to_have_skills, business_impact_keywords, ambiguity_flags, ats_weights, parse_confidence, review_required, pipeline_next.",
+    agent2_matching: "You are a technical talent matcher. Score candidates 0-100 across skill_overlap, experience_depth, recency, domain_alignment. Tag Ready/Near-ready/Build. Output: overall_score, tag, matched_skills, missing_skills, skill_match_pct, experience_alignment, summary, recommendation.",
+    agent3_resume_engine: "You are a technical resume specialist. Output: ats_score, keyword_gaps, weak_bullets, rewrite_suggestions, missing_quantifications, critical_mismatches, overall_verdict. Never fabricate experience.",
+    agent4_task_plan: "You are a technical prep coach. Generate a 30-day plan: week1-4 arrays, priority_topics, daily_time_mins, readiness_target, milestones. Weight by JD ATS importance.",
+    agent5_simulation: "You are a failure scenario designer. Output: scenario_title, role_assigned, business_impact (quantified), initial_alert, pressure_signals (2 red herrings), expected_actions, scoring_criteria.",
+    agent6_gap_detect: "You are a gap detection specialist. Analyse across 5 signals: Clarity, Decision, Technical, Pressure, Timing. Output: gaps[{gap_name, severity 1-5, signal, reasoning, confidence_pct, fix}], overall_readiness, top_priority_fix.",
+    agent7_linkedin: "You are a LinkedIn content strategist for IT consulting. Output: post_text (200w max, failure-based, no cliches), best_time, estimated_reach, content_type.",
+    agent8_post_interview: "You are a post-interview coach. Output: failure_point, root_gap, severity, what_was_said, what_was_expected, replay_scenario_type, performance_threshold, improvement_tasks, next_submission_readiness."
+  };
+  const blob = new Blob([JSON.stringify(prompts,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='nexgen-forge-system-prompts.json'; a.click();
+}
+
+function copyReport() {
+  if(!fullOutput.match) { alert('Run the pipeline first.'); return; }
+  const txt = `NEXGEN FORGE — CANDIDATE REPORT\n${'='.repeat(40)}\nCandidate: ${fullOutput.meta?.candidate||'—'}\nDomain: ${fullOutput.meta?.domain||'—'}\nDate: ${new Date().toLocaleDateString('en-IN')}\n\nROLE\n${fullOutput.jd?.job_title||'—'} · ${fullOutput.jd?.seniority||'—'}\n\nMATCH SCORE: ${fullOutput.match?.overall_score||'—'}/100 (${fullOutput.match?.tag||'—'})\nSkill match: ${fullOutput.match?.skill_match_pct||'—'}%\nExperience: ${fullOutput.match?.experience_alignment||'—'}%\n\nMISSING SKILLS\n${(fullOutput.match?.missing_skills||[]).join(', ')}\n\nTOP PRIORITY FIX\n${fullOutput.gaps?.top_priority_fix||'—'}\n\nATS SCORE: ${fullOutput.resume?.ats_score||'—'}/100\n\nRECRUITER RECOMMENDATION\n${fullOutput.match?.recommendation||'—'}`;
+  navigator.clipboard.writeText(txt).then(()=>alert('Report copied to clipboard.')).catch(()=>alert('Copy failed. Please copy manually from the Full JSON tab.'));
+}
+
+function copyZapierBlueprint() {
+  const bp = `NEXGEN FORGE — ZAPIER AUTOMATION BLUEPRINT\n\nStep 1: Trigger — Gmail: New email in label "JD-Intake"\nStep 2: Formatter — Extract email body text\nStep 3: Webhook — POST to NexGen FORGE API with JD text\nStep 4: Filter — Only continue if parse_confidence.job_title > 60\nStep 5: Google Sheets — Add row: job_title, cluster, must_have_skills count, timestamp\nStep 6: Slack — Post to #jd-intake: role, cluster, skills, flags\nStep 7: Delay — Wait for matching result\nStep 8: Conditional — If overall_score > 85: WhatsApp alert to recruiter\nStep 9: Google Drive — Save JSON to /Exeliq/FORGE/JDs/YYYY-MM-DD/\nStep 10: CRM — Create candidate opportunity record`;
+  navigator.clipboard.writeText(bp).then(()=>alert('Zapier blueprint copied.')).catch(()=>alert('Copy failed.'));
+}
+
+function copyCronConfig() {
+  const cfg = `# NEXGEN FORGE — CRON CONFIG\n0 8 * * *   agent_jd_intake --mode=morning-scan\n0 */2 8-22 * * *   agent_jd_intake --mode=poll\n0 7 * * *   agent_matching --mode=full-rescan\n0 9 * * *   agent_task_plan --mode=daily-reminder\n0 18 * * *   agent_simulation --mode=scheduled-session\n0 21 * * *   agent_linkedin --mode=generate-post\n0 8 * * *   agent_linkedin --mode=publish-queue\n0 22 * * *   agent_jd_intake --mode=nightly-summary\n0 8 * * 0   agent_gap_detect --mode=weekly-trend`;
+  navigator.clipboard.writeText(cfg).then(()=>alert('Cron config copied.')).catch(()=>alert('Copy failed.'));
+}
+
+function saveApiKey() {
+  const key = document.getElementById('api-key-input').value.trim();
+  if(!key) { alert('Enter your API key first.'); return; }
+  localStorage.setItem('forge_api_key', key);
+  alert('API key saved to localStorage.');
+}
+
+// ── INIT ──
+renderAgents();
+const savedKey = localStorage.getItem('forge_api_key');
+if(savedKey) document.getElementById('api-key-input').value = savedKey;
+</script>
+</body>
+</html>
