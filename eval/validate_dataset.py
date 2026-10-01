@@ -43,6 +43,7 @@ class ValidationResult:
         self.recruiter_count: int = 0
         self.non_recruiter_count: int = 0
         self.ids_seen: set[str] = set()
+        self.needs_match_labels: int = 0
 
     @property
     def ok(self) -> bool:
@@ -101,12 +102,12 @@ def validate_record(
     is_recruiter = record["is_recruiter"]
     profile_ids = record["expected_profile_ids"]
 
+    # Not an error. expected_profile_ids is ground truth for MATCH recall, which is a separate
+    # and much slower judgement than "is this a recruiter email" -- it means opening every
+    # profile and deciding which fit. Requiring it per email roughly triples labelling time for
+    # data the classifier never reads. Counted here so the outstanding work stays visible.
     if is_recruiter and intent in ("new_requirement", "resume_request") and not profile_ids:
-        result.add_error(
-            line_num,
-            f"expected_profile_ids must be non-empty for recruiter "
-            f"email with intent={intent!r} (id={record_id!r})",
-        )
+        result.needs_match_labels += 1
 
     # -- accumulate stats --
     result.total += 1
@@ -208,6 +209,12 @@ def _format_report(result: ValidationResult, path: Path) -> str:
         f"Non-recruiter: {result.non_recruiter_count:>4d}  "
         f"({result.non_recruiter_share:.1%})"
     )
+    if result.needs_match_labels:
+        lines.append("")
+        lines.append(
+            f"Still need expected_profile_ids: {result.needs_match_labels}  "
+            f"(only required to measure match recall, not classification)"
+        )
     lines.append("")
 
     if result.ok:

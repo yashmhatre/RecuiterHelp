@@ -211,27 +211,55 @@ class TestWrongEnumValue:
 
 
 class TestExpectedProfileIds:
-    def test_new_requirement_recruiter_without_profile_ids_fails(self, tmp_path):
-        rec = _minimal_record(
-            intent="new_requirement",
-            is_recruiter=True,
-            expected_profile_ids=[],
-        )
-        path = _write_jsonl(tmp_path, [rec])
-        result = validate_dataset(path, check_count=False)
-        assert not result.ok
-        assert any("expected_profile_ids" in e for e in result.errors)
+    def test_a_requirement_without_profile_ids_is_outstanding_work_not_an_error(self, tmp_path):
+        """expected_profile_ids is ground truth for MATCH recall, not for classification.
 
-    def test_resume_request_recruiter_without_profile_ids_fails(self, tmp_path):
+        Deciding it means opening every candidate profile and judging which fit, which is a far
+        slower call than "is this a recruiter email". Requiring it per email roughly triples
+        labelling time for data the classifier never reads, so it is counted as outstanding
+        rather than rejected.
+        """
         rec = _minimal_record(
-            intent="resume_request",
-            is_recruiter=True,
-            expected_profile_ids=[],
+            intent="new_requirement", is_recruiter=True, expected_profile_ids=[]
         )
         path = _write_jsonl(tmp_path, [rec])
+
         result = validate_dataset(path, check_count=False)
-        assert not result.ok
-        assert any("expected_profile_ids" in e for e in result.errors)
+
+        assert not [e for e in result.errors if "expected_profile_ids" in e]
+        assert result.needs_match_labels == 1
+
+    def test_a_resume_request_without_profile_ids_is_also_counted(self, tmp_path):
+        rec = _minimal_record(
+            intent="resume_request", is_recruiter=True, expected_profile_ids=[]
+        )
+        path = _write_jsonl(tmp_path, [rec])
+
+        result = validate_dataset(path, check_count=False)
+
+        assert not [e for e in result.errors if "expected_profile_ids" in e]
+        assert result.needs_match_labels == 1
+
+    def test_a_requirement_with_profile_ids_is_not_counted_as_outstanding(self, tmp_path):
+        rec = _minimal_record(
+            intent="new_requirement", is_recruiter=True, expected_profile_ids=[1, 3]
+        )
+        path = _write_jsonl(tmp_path, [rec])
+
+        assert validate_dataset(path, check_count=False).needs_match_labels == 0
+
+    def test_the_outstanding_count_is_reported(self, tmp_path):
+        """A number nobody sees is a number nobody fills in."""
+        from eval.validate_dataset import _format_report
+
+        rec = _minimal_record(
+            intent="new_requirement", is_recruiter=True, expected_profile_ids=[]
+        )
+        path = _write_jsonl(tmp_path, [rec])
+
+        report = _format_report(validate_dataset(path, check_count=False), path)
+
+        assert "expected_profile_ids" in report
 
     def test_follow_up_without_profile_ids_passes(self, tmp_path):
         rec = _minimal_record(

@@ -123,16 +123,6 @@ async function saveLabel() {
     .map((v) => parseInt(v, 10))
     .filter((v) => !Number.isNaN(v));
 
-  // The schema requires these for a recruiter requirement or resume request, so say so here
-  // rather than letting the server reject it after the fact.
-  if (IS_RECRUITER && ["new_requirement", "resume_request"].includes(intent) && !profileIds.length) {
-    notice.className = "notice err";
-    notice.textContent =
-      "Profile IDs are required for a requirement or a resume request — which of our " +
-      "candidates should match? Use 0 if genuinely none.";
-    return;
-  }
-
   const years = parseFloat($("lab_years").value);
   const record = {
     id: CURRENT.id,
