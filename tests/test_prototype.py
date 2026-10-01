@@ -1067,6 +1067,84 @@ def test_the_triage_table_appears_on_a_database_that_predates_it(tmp_path):
     assert store.get_triage(["m1"], db_path=db)["m1"]["verdict"] == VERDICT_RECRUITER
 
 
+def test_a_verdict_made_under_another_prompt_counts_as_missing(tmp_path):
+    """Editing the prompt must re-classify by itself, not rely on someone clearing the cache."""
+    from prototype import store
+
+    db = tmp_path / "t.db"
+    store.init_db(db)
+    store.save_triage(message_id="old", verdict=VERDICT_RECRUITER, fields=_fields(),
+                      prompt_version="v1", db_path=db)
+    store.save_triage(message_id="new", verdict=VERDICT_RECRUITER, fields=_fields(),
+                      prompt_version="v2", db_path=db)
+
+    assert set(store.get_triage(["old", "new"], "v2", db_path=db)) == {"new"}
+    assert set(store.get_triage(["old", "new"], db_path=db)) == {"old", "new"}
+
+
+def test_the_prompt_version_column_appears_on_an_existing_triage_table(tmp_path):
+    """The column was added after the table shipped, so CREATE IF NOT EXISTS alone misses it."""
+    import sqlite3
+
+    from prototype import store
+
+    db = tmp_path / "t.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "CREATE TABLE triage (message_id TEXT PRIMARY KEY, verdict TEXT NOT NULL, "
+            "is_recruiter INTEGER NOT NULL, confidence REAL NOT NULL, intent TEXT, role TEXT, "
+            "fields TEXT NOT NULL, backend TEXT, classified_at TEXT NOT NULL)"
+        )
+    store.init_db(db)
+    store.save_triage(message_id="m1", verdict=VERDICT_RECRUITER, fields=_fields(),
+                      prompt_version="v1", db_path=db)
+    assert set(store.get_triage(["m1"], "v1", db_path=db)) == {"m1"}
+
+
+def test_running_a_message_the_queue_classified_costs_no_second_model_call(
+    tmp_path, monkeypatch, profiles
+):
+    """The queue pays for the verdict once; clicking Run on the same email must reuse it."""
+    pytest.importorskip("fastapi")
+    from prototype import app as web
+    from prototype import store
+
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "t.db")
+    store.init_db()
+    calls = []
+    real_classify = web.classify
+
+    def counting_classify(mail):
+        calls.append(mail.provider_message_id)
+        return real_classify(mail)
+
+    monkeypatch.setattr(web, "classify", counting_classify)
+    mail = email("Need a Python developer with Django, 5+ years, Pune. Please share profiles.")
+
+    row = {"id": mail.provider_message_id}
+    web._attach_classifications([(row, mail)])
+    assert calls == [mail.provider_message_id]
+    assert row["classified_now"] is True
+
+    run_pipeline(mail, profiles, classifier=web._cached_classify)
+    web._attach_classifications([({"id": mail.provider_message_id}, mail)])
+    assert calls == [mail.provider_message_id], "the stored verdict was not reused"
+
+
+def test_running_an_unseen_message_stores_its_verdict_for_the_queue(tmp_path, monkeypatch):
+    pytest.importorskip("fastapi")
+    from prototype import app as web
+    from prototype import store
+
+    monkeypatch.setattr(store, "DB_PATH", tmp_path / "t.db")
+    store.init_db()
+    mail = email("Need a Python developer with Django, 5+ years, Pune. Please share profiles.")
+
+    web._cached_classify(mail)
+    hit = store.get_triage([mail.provider_message_id], web.CLASSIFY_VERSION)
+    assert mail.provider_message_id in hit
+
+
 def test_an_unconfident_no_is_held_not_filtered_out():
     """The confidence bar applies to both answers.
 

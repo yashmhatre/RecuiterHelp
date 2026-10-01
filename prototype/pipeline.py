@@ -19,7 +19,9 @@ this directory too.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -104,6 +106,11 @@ probability that the email is from a recruiter, and not to your certainty about 
 fields. Answering false and being certain of it is confidence 1.0, not 0.0. Use a low value
 only when you genuinely cannot tell either way, because a low value sends the email to a human
 instead of acting on your answer."""
+
+#: Fingerprint of the prompt above. The triage cache stores it beside each verdict and ignores
+#: verdicts made under any other prompt, so editing the prompt re-classifies on the next fetch
+#: by itself instead of depending on someone remembering to clear the cache.
+CLASSIFY_VERSION = hashlib.sha256(CLASSIFY_SYSTEM.encode()).hexdigest()[:12]
 
 
 RERANK_SYSTEM = """You rerank candidate profiles against a job requirement for a recruiter.
@@ -831,8 +838,17 @@ def _match_summary(matches: list[dict]) -> str:
     return f"{len(matches)} profile(s) at or above {MIN_SCORE}/100: " + "; ".join(parts)
 
 
-def run_pipeline(email: RawEmail, profiles: list[dict]) -> PipelineResult:
-    """The routing table from P2-12, in miniature. Order matters: verify before any model call."""
+def run_pipeline(
+    email: RawEmail,
+    profiles: list[dict],
+    classifier: Callable[[RawEmail], tuple[dict[str, Any], str, int]] | None = None,
+) -> PipelineResult:
+    """The routing table from P2-12, in miniature. Order matters: verify before any model call.
+
+    ``classifier`` replaces ``classify`` -- the inbox passes one that answers from the triage
+    cache, so running a message the queue already classified costs no second model call. It is
+    only reached after the free stages, same as ``classify``.
+    """
     result = PipelineResult(status="fetched", label=None, backend=llm.backend_name())
 
     pre = prefilter(email)
@@ -864,7 +880,7 @@ def run_pipeline(email: RawEmail, profiles: list[dict]) -> PipelineResult:
         result.label = LABEL_REVIEW
         return result
 
-    fields, backend, latency = classify(email)
+    fields, backend, latency = (classifier or classify)(email)
     result.backend = backend
     confident = fields["is_recruiter"] and fields["confidence"] >= MIN_CONFIDENCE
     if fields.get("contradiction"):
