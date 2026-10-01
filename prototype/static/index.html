@@ -177,8 +177,9 @@ a { color: var(--accent); }
       <div class="card">
         <h2>Add a candidate</h2>
         <p class="hint">Upload a resume to pre-fill, then correct the fields before saving.
-          One person can have several role profiles &mdash; submit again with the same email and
-          a different title.</p>
+          One person can hold several role profiles &mdash; submit again with the same email and
+          a different title. Limits per person: <b>6</b> profiles for senior and above,
+          <b>3</b> for entry and mid.</p>
 
         <form id="candidateForm">
           <label>Resume <span class="opt">&mdash; PDF, DOCX or TXT</span></label>
@@ -199,8 +200,24 @@ a { color: var(--accent); }
               placeholder="Pune"></div>
           </div>
 
-          <label>Profile title <span class="opt">&mdash; this is what gets matched</span></label>
-          <input type="text" name="title" id="f_title" placeholder="Senior Python Engineer" required>
+          <div class="row">
+            <div>
+              <label>Profile title <span class="opt">&mdash; what gets matched</span></label>
+              <input type="text" name="title" id="f_title" placeholder="Senior Python Engineer" required>
+            </div>
+            <div>
+              <label>Seniority <span class="opt">&mdash; sets the profile limit</span></label>
+              <select name="seniority" id="f_seniority">
+                <option value="">not set</option>
+                <option value="entry">Entry</option>
+                <option value="mid">Mid</option>
+                <option value="senior" selected>Senior</option>
+                <option value="staff">Staff</option>
+                <option value="principal">Principal</option>
+                <option value="executive">Executive</option>
+              </select>
+            </div>
+          </div>
 
           <div class="row">
             <div><label>Years experience</label>

@@ -134,6 +134,7 @@ async def api_add_candidate(
     location: str = Form(""),
     notice_period_days: str = Form(""),
     availability: str = Form(""),
+    seniority: str = Form(""),
     resume: UploadFile | None = File(None),
 ) -> JSONResponse:
     """Add a candidate plus one role profile, with an optional resume upload."""
@@ -149,18 +150,22 @@ async def api_add_candidate(
 
     skill_list = [s for s in re.split(r"[,\n;]+", skills) if s.strip()]
 
-    candidate_id, profile_id = store.add_candidate_with_profile(
-        name=name,
-        email=email,
-        phone=phone.strip() or None,
-        location=location.strip() or None,
-        notice_period_days=notice,
-        availability=availability.strip() or None,
-        title=title,
-        skills=skill_list,
-        years_experience=years_experience,
-        summary=summary,
-    )
+    try:
+        candidate_id, profile_id = store.add_candidate_with_profile(
+            name=name,
+            email=email,
+            phone=phone.strip() or None,
+            location=location.strip() or None,
+            notice_period_days=notice,
+            availability=availability.strip() or None,
+            title=title,
+            skills=skill_list,
+            seniority=seniority.strip() or None,
+            years_experience=years_experience,
+            summary=summary,
+        )
+    except store.ProfileCapReached as exc:
+        raise HTTPException(400, str(exc)) from exc
 
     resume_note = "no resume uploaded"
     if resume is not None and resume.filename:

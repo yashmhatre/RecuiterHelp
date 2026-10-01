@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS candidates (
     location           TEXT,
     notice_period_days INTEGER,
     availability       TEXT,
+    -- Drives the profile cap below. Entry/Mid/Senior/Staff/Principal/Executive, matching the
+    -- enum in forge-jd-intelligence so both sides of a match speak the same ladder.
+    seniority          TEXT,
     active             INTEGER NOT NULL DEFAULT 1,
     created_at         TEXT    NOT NULL
 );
@@ -74,6 +77,31 @@ CREATE TABLE IF NOT EXISTS runs (
 """
 
 
+#: Maximum profiles per candidate, from the client: "Max 5 to 6 profiles per candidate for
+#: experience resources and max 3 profiles for Jr and Mid level experience candidates."
+#: Enforced at insert rather than left as guidance, because the reason for the cap is that a
+#: candidate with nine near-identical CVs makes matching worse, not better.
+PROFILE_CAP_SENIOR = 6
+PROFILE_CAP_JUNIOR = 3
+
+#: Which seniorities count as junior or mid for the cap.
+JUNIOR_SENIORITIES = frozenset({"entry", "junior", "jr", "mid", "mid-level", "intermediate"})
+
+
+class ProfileCapReached(ValueError):
+    """Raised when a candidate already holds the maximum number of profiles allowed."""
+
+
+def profile_cap_for(seniority: str | None) -> int:
+    """The cap that applies to this candidate.
+
+    Unknown or unset seniority gets the senior cap: refusing a profile because nobody recorded
+    a level would be a worse failure than allowing one too many.
+    """
+    level = (seniority or "").strip().lower()
+    return PROFILE_CAP_JUNIOR if level in JUNIOR_SENIORITIES else PROFILE_CAP_SENIOR
+
+
 def now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -96,9 +124,21 @@ def connect(db_path: Path | str | None = None) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+#: Columns added after the first release. CREATE TABLE IF NOT EXISTS silently skips an existing
+#: table, so a new column never appears on a database that already has rows -- which is every
+#: database anyone is actually using.
+_ADDED_COLUMNS = (
+    ("candidates", "seniority", "TEXT"),
+)
+
+
 def init_db(db_path: Path | str | None = None) -> None:
     with connect(db_path) as conn:
         conn.executescript(SCHEMA)
+        for table, column, column_type in _ADDED_COLUMNS:
+            existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +155,7 @@ def add_candidate_with_profile(
     notice_period_days: int | None,
     availability: str | None,
     title: str,
+    seniority: str | None = None,
     skills: list[str],
     years_experience: float,
     summary: str,
@@ -131,14 +172,17 @@ def add_candidate_with_profile(
             candidate_id = row["id"]
             conn.execute(
                 """UPDATE candidates SET name = ?, phone = ?, location = ?,
-                   notice_period_days = ?, availability = ? WHERE id = ?""",
-                (name.strip(), phone, location, notice_period_days, availability, candidate_id),
+                   notice_period_days = ?, availability = ?,
+                   seniority = COALESCE(?, seniority) WHERE id = ?""",
+                (name.strip(), phone, location, notice_period_days, availability,
+                 seniority, candidate_id),
             )
         else:
             cursor = conn.execute(
                 """INSERT INTO candidates
-                   (name, email, phone, location, notice_period_days, availability, active, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, 1, ?)""",
+                   (name, email, phone, location, notice_period_days, availability,
+                    seniority, active, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)""",
                 (
                     name.strip(),
                     email.strip().lower(),
@@ -146,10 +190,26 @@ def add_candidate_with_profile(
                     location,
                     notice_period_days,
                     availability,
+                    seniority,
                     now(),
                 ),
             )
             candidate_id = int(cursor.lastrowid or 0)
+
+        # Cap check, after the candidate exists so the error can name their level.
+        level = conn.execute(
+            "SELECT seniority FROM candidates WHERE id = ?", (candidate_id,)
+        ).fetchone()["seniority"]
+        held = conn.execute(
+            "SELECT COUNT(*) AS n FROM profiles WHERE candidate_id = ? AND active = 1",
+            (candidate_id,),
+        ).fetchone()["n"]
+        cap = profile_cap_for(level)
+        if held >= cap:
+            raise ProfileCapReached(
+                f"{name.strip()} already has {held} profiles. The limit is {cap} for "
+                f"{level or 'unspecified seniority'} candidates. Remove or deactivate one first."
+            )
 
         cursor = conn.execute(
             """INSERT INTO profiles
@@ -191,7 +251,7 @@ def list_profiles(db_path: Path | str | None = None) -> list[dict]:
             """
             SELECT p.id AS profile_id, p.title, p.skills, p.years_experience, p.summary,
                    c.id AS candidate_id, c.name, c.email, c.phone, c.location,
-                   c.notice_period_days, c.availability,
+                   c.notice_period_days, c.availability, c.seniority,
                    r.id AS resume_id, r.file_path, r.filename
             FROM profiles p
             JOIN candidates c ON c.id = p.candidate_id

@@ -787,3 +787,124 @@ def test_a_zero_confidence_refusal_goes_to_review_not_the_bin(profiles):
     assert result.status == "needs_review"
     assert result.label == "Needs review"
     assert result.draft is None
+
+
+# ---------------------------------------------------------------------------
+# Profile caps
+# ---------------------------------------------------------------------------
+#
+# From the client: "Max 5 to 6 profiles per candidate for experience resources and max 3
+# profiles for Jr and Mid level experience candidates."
+
+
+def _store(tmp_path, monkeypatch):
+    from prototype import store
+
+    db = tmp_path / "caps.db"
+    monkeypatch.setattr(store, "DB_PATH", db)
+    store.init_db(db)
+    return store, db
+
+
+def _add(store, db, *, seniority, title, email="person@example.com", name="Test Person"):
+    return store.add_candidate_with_profile(
+        name=name, email=email, phone=None, location="Pune", notice_period_days=30,
+        availability=None, title=title, skills=["python"], seniority=seniority,
+        years_experience=7.0, summary="", db_path=db,
+    )
+
+
+@pytest.mark.parametrize(
+    ("seniority", "cap"),
+    [("senior", 6), ("staff", 6), ("principal", 6), ("executive", 6),
+     ("mid", 3), ("entry", 3), ("junior", 3)],
+)
+def test_the_cap_depends_on_seniority(seniority: str, cap: int):
+    from prototype.store import profile_cap_for
+
+    assert profile_cap_for(seniority) == cap
+
+
+def test_an_unrecorded_seniority_gets_the_higher_cap():
+    """Refusing a profile because nobody recorded a level is a worse failure than allowing one
+    too many."""
+    from prototype.store import PROFILE_CAP_SENIOR, profile_cap_for
+
+    assert profile_cap_for(None) == PROFILE_CAP_SENIOR
+    assert profile_cap_for("") == PROFILE_CAP_SENIOR
+
+
+def test_a_senior_candidate_is_capped_at_six(tmp_path, monkeypatch):
+    store, db = _store(tmp_path, monkeypatch)
+
+    for i in range(6):
+        _add(store, db, seniority="senior", title=f"Role {i}")
+
+    with pytest.raises(store.ProfileCapReached) as excinfo:
+        _add(store, db, seniority="senior", title="Role 7")
+
+    assert "6" in str(excinfo.value)
+    assert "senior" in str(excinfo.value).lower()
+
+
+def test_a_mid_level_candidate_is_capped_at_three(tmp_path, monkeypatch):
+    store, db = _store(tmp_path, monkeypatch)
+
+    for i in range(3):
+        _add(store, db, seniority="mid", title=f"Role {i}")
+
+    with pytest.raises(store.ProfileCapReached):
+        _add(store, db, seniority="mid", title="Role 4")
+
+
+def test_the_cap_is_per_candidate_not_global(tmp_path, monkeypatch):
+    store, db = _store(tmp_path, monkeypatch)
+
+    for i in range(3):
+        _add(store, db, seniority="mid", title=f"A{i}", email="a@example.com", name="Person A")
+    # A different person starts from zero.
+    _add(store, db, seniority="mid", title="B0", email="b@example.com", name="Person B")
+
+    assert len(store.list_profiles(db)) == 4
+
+
+def test_the_cap_message_says_how_to_proceed(tmp_path, monkeypatch):
+    """An error that only says "no" makes someone guess what to do next."""
+    store, db = _store(tmp_path, monkeypatch)
+    for i in range(3):
+        _add(store, db, seniority="entry", title=f"Role {i}")
+
+    with pytest.raises(store.ProfileCapReached) as excinfo:
+        _add(store, db, seniority="entry", title="Role 4")
+
+    assert "Remove or deactivate" in str(excinfo.value)
+
+
+def test_seniority_survives_a_round_trip(tmp_path, monkeypatch):
+    """Matching scores Seniority Alignment, so it has to reach the matcher."""
+    store, db = _store(tmp_path, monkeypatch)
+    _add(store, db, seniority="principal", title="Architect")
+
+    assert store.list_profiles(db)[0]["seniority"] == "principal"
+
+
+def test_an_existing_database_gains_the_column(tmp_path, monkeypatch):
+    """CREATE TABLE IF NOT EXISTS skips an existing table, so a new column never appears on a
+    database that already has rows -- which is every database in actual use."""
+    import sqlite3
+
+    from prototype import store
+
+    db = tmp_path / "old.db"
+    # A database created before seniority existed.
+    conn = sqlite3.connect(db)
+    conn.executescript(store.SCHEMA.replace("    seniority          TEXT,\n", ""))
+    conn.commit()
+    conn.close()
+
+    store.init_db(db)
+
+    conn = sqlite3.connect(db)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(candidates)")}
+    conn.close()
+    assert "seniority" in columns

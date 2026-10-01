@@ -111,6 +111,7 @@ async function loadProfiles() {
             <div class="top"><span class="tt">${esc(p.title)}</span>
               <span style="color:var(--muted);font-size:12px">#${p.profile_id}</span></div>
             <div class="meta">${Number(p.years_experience)} yrs
+              ${p.seniority ? "&middot; " + esc(p.seniority) : ""}
               &middot; ${esc(p.location || "location not set")}
               ${p.notice_period_days != null ? "&middot; " + p.notice_period_days + "-day notice" : ""}
               &middot; ${resume}</div>

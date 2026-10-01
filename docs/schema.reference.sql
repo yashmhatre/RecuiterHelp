@@ -17,6 +17,9 @@ CREATE TABLE candidates (
     location           TEXT,
     notice_period_days INTEGER,
     availability       TEXT,
+    -- Entry/Mid/Senior/Staff/Principal/Executive, matching forge-jd-intelligence's enum so a
+    -- candidate and a requirement are scored against the same ladder.
+    seniority          TEXT,
     active             BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -54,6 +57,15 @@ CREATE TABLE resumes (
 -- At most one current resume per profile.
 CREATE UNIQUE INDEX resumes_one_current_idx ON resumes (profile_id)
     WHERE is_current;
+
+-- Profile cap per candidate, from the client: "Max 5 to 6 profiles per candidate for experience
+-- resources and max 3 profiles for Jr and Mid level experience candidates."
+--
+-- Enforced in application code rather than as a CHECK constraint, because the limit depends on
+-- a column in another table (candidates.seniority) and the message needs to name the person and
+-- their level to be actionable. See prototype/store.py: PROFILE_CAP_SENIOR, PROFILE_CAP_JUNIOR.
+-- The reason for the cap is that a candidate with nine near-identical CVs makes matching worse,
+-- not better.
 
 -- ---------------------------------------------------------------- mailbox
 
