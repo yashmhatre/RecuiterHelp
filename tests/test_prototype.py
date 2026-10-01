@@ -618,3 +618,112 @@ def test_a_salary_we_add_to_the_subject_is_caught(profiles):
     )
 
     assert [i for i in report["issues"] if i["check"] == "no_salary_figures"]
+
+
+# ---------------------------------------------------------------------------
+# Tiered skills
+# ---------------------------------------------------------------------------
+#
+# From a real agency email: "Must-have: Power BI + Databricks + SQL + AI/LLM Prompting",
+# "Strongly preferred: DAX/Data Modeling + Power Query + Spark", "Good to have: ...", and then
+# "Please ensure the candidates have strong hands-on experience with the must-have skills before
+# sharing the profiles." Flattening those tiers put forward a candidate holding none of the
+# must-haves, which is the thing the sender explicitly asked us not to do.
+
+
+def tiered_fields(**overrides) -> dict:
+    base = {
+        "skills": ["power bi", "databricks", "sql", "ai/llm prompting", "spark"],
+        "must_have_skills": ["power bi", "databricks", "sql", "ai/llm prompting"],
+        "preferred_skills": ["dax/data modeling", "power query", "spark"],
+        "nice_to_have_skills": ["azure databricks", "data governance"],
+        "min_years_experience": None, "location": None, "role": "Business Intelligence Consultant",
+        "candidate_names": [], "requested_persons": [], "intent": "new_requirement",
+    }
+    base.update(overrides)
+    return base
+
+
+def profile_with(skills: list[str], name: str, profile_id: int, resume: str) -> dict:
+    return {
+        "profile_id": profile_id, "candidate_id": profile_id, "name": name,
+        "email": f"{name.split()[0].lower()}@example.com", "phone": None, "location": "Pune",
+        "notice_period_days": 30, "availability": None, "title": "Data Engineer",
+        "skills": skills, "years_experience": 5.0, "summary": "",
+        "file_path": resume, "filename": "r.pdf", "resume_id": profile_id,
+    }
+
+
+def test_a_candidate_missing_the_must_haves_is_not_put_forward(resume_file):
+    """Matched 0.30 on incidental skills before this, and went out in the draft."""
+    weak = profile_with(["spark", "sql", "python"], "Meera Iyer", 2, str(resume_file))
+
+    matches = match_profiles(tiered_fields(), [weak])
+
+    assert matches == [], "a profile holding none of the must-haves must not be offered"
+
+
+def test_a_candidate_holding_the_must_haves_is_put_forward(resume_file):
+    strong = profile_with(
+        ["power bi", "databricks", "sql", "ai/llm prompting", "spark"], "Yash Mhatre", 1,
+        str(resume_file),
+    )
+
+    matches = match_profiles(tiered_fields(), [strong])
+
+    assert [m["name"] for m in matches] == ["Yash Mhatre"]
+    assert matches[0]["score"] >= 0.6
+
+
+def test_the_reason_names_the_missing_must_haves(resume_file):
+    """A reviewer needs to see which requirement a candidate falls short on."""
+    partial = profile_with(["power bi", "databricks", "sql"], "Partial Match", 3, str(resume_file))
+
+    matches = match_profiles(tiered_fields(), [partial])
+
+    assert matches, "3 of 4 must-haves is above the coverage floor and should still appear"
+    assert "ai/llm prompting" in matches[0]["reason"]
+    assert "missing" in matches[0]["reason"]
+
+
+def test_full_must_have_coverage_outranks_partial(resume_file):
+    full = profile_with(["power bi", "databricks", "sql", "ai/llm prompting"], "Full", 1, str(resume_file))
+    partial = profile_with(["power bi", "databricks", "sql"], "Partial", 2, str(resume_file))
+
+    matches = match_profiles(tiered_fields(), [full, partial])
+
+    assert [m["name"] for m in matches][0] == "Full"
+
+
+def test_preferred_and_nice_to_have_break_ties_but_cannot_rescue_a_miss(resume_file):
+    """Holding every preferred and nice-to-have skill does not substitute for a must-have."""
+    no_musts = profile_with(
+        ["dax/data modeling", "power query", "spark", "azure databricks", "data governance"],
+        "All The Extras", 4, str(resume_file),
+    )
+
+    assert match_profiles(tiered_fields(), [no_musts]) == []
+
+
+def test_an_untiered_requirement_still_uses_flat_overlap(resume_file):
+    """Most emails state no tiers; those must keep working exactly as before."""
+    anyone = profile_with(["python", "django"], "Flat Match", 5, str(resume_file))
+    fields = tiered_fields(
+        skills=["python", "django"], must_have_skills=[], preferred_skills=[],
+        nice_to_have_skills=[],
+    )
+
+    matches = match_profiles(fields, [anyone])
+
+    assert [m["name"] for m in matches] == ["Flat Match"]
+
+
+def test_a_skill_named_only_in_the_summary_counts(resume_file):
+    """A requirement says "data modeling" where a profile says "dimensional data modeling"."""
+    p = profile_with(["power bi", "databricks", "sql"], "Summary Skills", 6, str(resume_file))
+    p["summary"] = "Builds AI/LLM prompting workflows over a Databricks lakehouse."
+
+    matches = match_profiles(tiered_fields(), [p])
+
+    assert matches
+    assert "4/4 must-have" in matches[0]["reason"]
