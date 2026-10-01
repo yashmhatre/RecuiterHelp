@@ -22,6 +22,7 @@ order:
   - out_of_office
   - noreply_sender
   - job_alert_sender
+  - transactional_sender
 
 rules:
   # Our own sent mail. Replying to ourselves would loop.
@@ -110,5 +111,38 @@ rules:
       - updates
       - marketing
       - campaign
+    addresses: []
+    domains: []
+
+  # Banking, lending and billing mail. Added after a real inbox: 40 messages produced 21 bulk
+  # drops and zero false drops, but 15 of the 19 that survived were EMI reminders, repayment
+  # receipts and tax invoices. They carry no List-Unsubscribe and no noreply- sender, so nothing
+  # caught them, and every one would have to be hand-labelled as not-a-recruiter.
+  #
+  # Kept narrow on purpose. "offers@" and "deals@" are NOT here: a recruitment agency could
+  # plausibly send from either, and a false drop is the one failure that leaves no trace.
+  # Treat this list as provisional until P3-03 tunes it against the labelled set.
+  transactional_sender:
+    enabled: true
+    local_parts:
+      - bankalerts
+      - bankloanalerts
+      - loanalerts
+      - collections
+      - billing
+      - invoice
+      - invoices
+      - statement
+      - statements
+      - receipt
+      - receipts
+      - emi
+      - transaction
+      - transactions
+      - txn
+      - payment
+      - payments
+      - creditcard
+      - cardalerts
     addresses: []
     domains: []

@@ -12,6 +12,7 @@ to reconnect weekly; a Workspace account with an Internal app does not have that
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -362,14 +363,23 @@ def fetch_recent(limit: int = 15, query: str = "in:inbox -category:promotions") 
     service = _service(creds)
     self_address = address_of(creds)
 
-    listing = (
-        service.users().messages()
-        .list(userId="me", maxResults=max(1, min(limit, 50)), q=query)
-        .execute()
-    )
+    wanted = max(1, min(limit, 500))
+    stubs: list[dict] = []
+    page_token = None
+    while len(stubs) < wanted:
+        listing = (
+            service.users().messages()
+            .list(userId="me", maxResults=min(100, wanted - len(stubs)), q=query,
+                  pageToken=page_token)
+            .execute()
+        )
+        stubs.extend(listing.get("messages", []))
+        page_token = listing.get("nextPageToken")
+        if not page_token:
+            break
 
     emails: list[RawEmail] = []
-    for stub in listing.get("messages", []):
+    for stub in stubs[:wanted]:
         full = (
             service.users().messages()
             .get(userId="me", id=stub["id"], format="full")
@@ -377,6 +387,34 @@ def fetch_recent(limit: int = 15, query: str = "in:inbox -category:promotions") 
         )
         emails.append(to_raw_email(full, self_address))
     return emails
+
+
+def staging_record(email: RawEmail) -> dict:
+    """One unlabelled record in the shape eval/label_cli.py stages.
+
+    The id is a hash of the RFC822 Message-ID, matching what the .eml importer produces, so the
+    same email pulled from Gmail and dropped in as a file resolves to one record rather than two.
+    """
+    message_id = email.headers.get("message-id", "")
+    seed = message_id or f"{email.provider_message_id}:{email.subject}"
+    record_id = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
+
+    headers = {
+        key: email.headers[key]
+        for key in ("authentication-results", "from", "reply-to", "list-unsubscribe", "precedence")
+        if email.headers.get(key)
+    }
+    headers.setdefault("from", f"{email.from_name} <{email.from_email}>".strip())
+    headers.setdefault("authentication-results", "none")
+
+    return {
+        "id": record_id,
+        "provider": "gmail",
+        "headers": headers,
+        "subject": email.subject,
+        "body_text": email.body_text,
+        "_labelled": False,
+    }
 
 
 # ---------------------------------------------------------------------------

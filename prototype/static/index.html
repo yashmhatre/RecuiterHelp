@@ -333,6 +333,23 @@ a { color: var(--accent); }
         <input type="number" id="gmailLimit" value="15" min="1" max="50">
         <button type="button" class="primary" id="fetchBtn" disabled>Fetch messages</button>
       </div>
+
+      <div class="card">
+        <h2>Labelling queue</h2>
+        <p class="hint">Pull real mail into the labelling queue. This is the blocking task for
+          every accuracy number &mdash; 200 to 300 labelled emails. Bulk mail is skipped unless
+          you include it, but the set needs at least 25% non-recruiter, so include it once you
+          have enough recruiter mail.</p>
+        <label>How many to pull</label>
+        <input type="number" id="exportLimit" value="200" min="1" max="500">
+        <label>Gmail search query</label>
+        <input type="text" id="exportQuery" value="in:inbox">
+        <label style="display:flex;gap:8px;align-items:center;font-weight:400">
+          <input type="checkbox" id="exportBulk" style="width:auto"> include bulk and automated mail
+        </label>
+        <button type="button" class="primary" id="exportBtn" disabled>Add to labelling queue</button>
+        <div class="notice" id="exportNotice"></div>
+      </div>
     </div>
 
     <div>

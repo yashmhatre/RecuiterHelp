@@ -176,6 +176,7 @@ RULE_IMPLEMENTATIONS = {
     "out_of_office": _rule_subject_patterns,
     "noreply_sender": _rule_sender_local_part,
     "job_alert_sender": _rule_sender_local_part,
+    "transactional_sender": _rule_sender_local_part,
 }
 
 

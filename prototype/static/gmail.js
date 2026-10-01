@@ -16,6 +16,7 @@ async function refreshGmail() {
     : `Not connected<small>${esc(data.detail || "")}</small>`;
 
   $("fetchBtn").disabled = !data.connected;
+  $("exportBtn").disabled = !data.connected;
   $("disconnectBtn").style.display = data.connected ? "inline-block" : "none";
   if (data.has_client_secret) {
     $("credLabel").textContent = "OAuth client JSON uploaded";
@@ -135,6 +136,38 @@ $("fetchBtn").addEventListener("click", async () => {
   } finally {
     btn.disabled = false;
     btn.textContent = "Fetch messages";
+  }
+});
+
+$("exportBtn").addEventListener("click", async () => {
+  const btn = $("exportBtn");
+  const notice = $("exportNotice");
+  btn.disabled = true;
+  btn.textContent = "Pulling…";
+  notice.className = "notice";
+
+  try {
+    const body = new FormData();
+    body.append("limit", $("exportLimit").value || "200");
+    body.append("query", $("exportQuery").value || "in:inbox");
+    body.append("include_bulk", $("exportBulk").checked ? "yes" : "no");
+
+    const res = await fetch("/api/gmail/export", { method: "POST", body });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "export failed");
+
+    notice.className = "notice ok";
+    notice.innerHTML =
+      `Added <b>${data.added}</b> to the queue from ${data.fetched} fetched` +
+      (data.skipped_duplicate ? ` &middot; ${data.skipped_duplicate} already queued` : "") +
+      (data.skipped_bulk ? ` &middot; ${data.skipped_bulk} bulk skipped` : "") +
+      `.<br>Now run <code>${data.next}</code> in a terminal to start labelling.`;
+  } catch (err) {
+    notice.className = "notice err";
+    notice.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Add to labelling queue";
   }
 });
 

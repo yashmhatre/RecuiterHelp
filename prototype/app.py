@@ -19,6 +19,7 @@ client; sending stays a human action, which is requirement 5.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -517,6 +518,58 @@ def api_gmail_run(message_id: str = Form(...), save: str = Form("no")) -> JSONRe
     )
     payload["profile_count"] = len(profiles)
     return JSONResponse(payload)
+
+
+@app.post("/api/gmail/export")
+def api_gmail_export(
+    limit: int = Form(200), query: str = Form("in:inbox"), include_bulk: str = Form("no")
+) -> JSONResponse:
+    """Pull real mail into the labelling queue.
+
+    Labelling is the blocking task for every accuracy number and for the ML classifier, and
+    exporting by hand is the kind of friction that stops it getting done. This writes straight
+    into the staging file eval/label_cli.py already reads.
+
+    Bulk mail is skipped by default but can be included: a labelled set that is all recruiter
+    mail teaches a classifier nothing about the negative class, and the ticket requires at least
+    25% non-recruiter.
+    """
+    from eval.label_cli import LABELS_PATH, STAGING_PATH, _load_labelled_ids, _load_staged_ids
+    from pipeline.prefilter import prefilter
+
+    try:
+        emails = gmail_client.fetch_recent(limit=limit, query=query)
+    except gmail_client.GmailError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"Could not read the mailbox: {exc}") from exc
+
+    STAGING_PATH.parent.mkdir(parents=True, exist_ok=True)
+    already = _load_staged_ids() | _load_labelled_ids(LABELS_PATH)
+
+    added, skipped_duplicate, skipped_bulk = 0, 0, 0
+    with open(STAGING_PATH, "a", encoding="utf-8") as handle:
+        for email in emails:
+            if include_bulk != "yes" and not prefilter(email).keep:
+                skipped_bulk += 1
+                continue
+            record = gmail_client.staging_record(email)
+            if record["id"] in already:
+                skipped_duplicate += 1
+                continue
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            already.add(record["id"])
+            added += 1
+
+    return JSONResponse({
+        "ok": True,
+        "fetched": len(emails),
+        "added": added,
+        "skipped_duplicate": skipped_duplicate,
+        "skipped_bulk": skipped_bulk,
+        "staging_path": str(STAGING_PATH),
+        "next": "python eval/label_cli.py",
+    })
 
 
 @app.get("/api/status")
