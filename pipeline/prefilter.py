@@ -163,6 +163,47 @@ def _rule_sender_local_part(email: RawEmail, config: dict[str, Any]) -> bool:
     return bool(domain) and domain in _lowered(config.get("domains", []))
 
 
+#: Two-part public suffixes common in this client's mail. Not the full PSL -- pulling in a
+#: dependency to shave one edge case is not worth it, and an unlisted suffix fails safe by
+#: keeping the email.
+TWO_PART_SUFFIXES = frozenset({
+    "co.uk", "org.uk", "ac.uk", "co.in", "net.in", "org.in", "com.au", "co.nz",
+    "co.za", "com.sg", "com.br", "co.jp",
+})
+
+
+def _rule_campaign_subdomain(email: RawEmail, config: dict[str, Any]) -> bool:
+    """Match on the sending domain's leftmost label when that label is bulk-mail plumbing.
+
+    `nimfupdates@campaign1.nipponindia.email` carries no List-Unsubscribe, no List-Id and no
+    Precedence header, so every header rule misses it, and the local part `nimfupdates` does not
+    match `updates` because local parts match whole segments -- which is correct, since a
+    substring match is how a real agency gets falsely dropped.
+
+    The subdomain is the honest signal. Nobody's recruiter writes to them personally from
+    `campaign1.`; that label exists because an ESP put it there to keep campaign traffic off
+    the corporate domain's reputation. Matched on the leftmost label only, and only against
+    labels that are purely infrastructure: `mail.` and `email.` are deliberately NOT in the
+    list, because a small agency plausibly does send its real mail from `mail.agency.com`.
+    """
+    domain = _domain(email.from_email)
+    if not domain:
+        return False
+
+    labels = domain.split(".")
+    # There must be a label to the LEFT of the registrable domain, or we would be judging the
+    # company name itself: `campaign.com` is somebody's actual business, `campaign1.x.com` is
+    # plumbing. Two-part public suffixes push the boundary out by one.
+    required = 4 if len(labels) >= 2 and ".".join(labels[-2:]) in TWO_PART_SUFFIXES else 3
+    if len(labels) < required:
+        return False
+
+    label = labels[0]
+    # A trailing shard number is part of the naming convention: campaign1, campaign2, em3.
+    label = re.sub(r"\d+$", "", label)
+    return bool(label) and label in _lowered(config.get("labels", []))
+
+
 #: Rule name -> implementation. A rule in the YAML with no implementation here is a
 #: configuration error, caught at load time by ``prefilter``.
 RULE_IMPLEMENTATIONS = {
@@ -177,6 +218,7 @@ RULE_IMPLEMENTATIONS = {
     "noreply_sender": _rule_sender_local_part,
     "job_alert_sender": _rule_sender_local_part,
     "transactional_sender": _rule_sender_local_part,
+    "campaign_subdomain": _rule_campaign_subdomain,
 }
 
 

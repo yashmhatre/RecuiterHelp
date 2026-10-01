@@ -389,3 +389,54 @@ def test_the_module_makes_no_network_or_model_calls():
 
     for forbidden in ("requests", "httpx", "urllib", "socket", "ollama", "psycopg"):
         assert f"import {forbidden}" not in source
+
+
+# ---------------------------------------------------------------------------
+# campaign_subdomain: bulk-mail plumbing in the sending domain
+#
+# Added after two Nippon Life marketing emails reached the model from a real inbox. They carry
+# no List-Unsubscribe, no List-Id and no Precedence header, so every header rule missed them.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "nimfupdates@campaign1.nipponindia.email",   # the real one, verbatim
+        "news@campaign.brand.com",
+        "x@campaigns.brand.com",
+        "x@mailer2.brand.com",
+        "x@sendgrid.brand.com",
+        "x@newsletter.brand.com",
+    ],
+)
+def test_campaign_subdomains_are_dropped(address):
+    assert dropped_by(email(from_email=address)) == "campaign_subdomain"
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        # The whole point of matching the leftmost label only: these are real senders.
+        "priya@mail.agency.com",         # a small agency's own mail host
+        "priya@email.agency.com",
+        "priya@campaignmonitor.com",     # the label is not `campaign`
+        "priya@agency.com",
+        "priya@jobs.agency.com",
+        "campaign@agency.com",           # local part, not the domain label
+        "priya@recruiting.campaignco.com",
+    ],
+)
+def test_real_senders_are_not_dropped_by_the_subdomain_rule(address):
+    assert dropped_by(email(from_email=address)) != "campaign_subdomain"
+
+
+def test_the_rule_needs_an_actual_subdomain():
+    """A bare two-label domain has no sending subdomain to judge."""
+    assert dropped_by(email(from_email="x@campaign.com")) != "campaign_subdomain"
+
+
+def test_a_two_part_suffix_domain_is_not_mistaken_for_a_subdomain():
+    """`campaign.co.uk` is a registrable domain, not plumbing under someone else's."""
+    assert dropped_by(email(from_email="x@campaign.co.uk")) != "campaign_subdomain"
+    assert dropped_by(email(from_email="x@campaign1.agency.co.uk")) == "campaign_subdomain"

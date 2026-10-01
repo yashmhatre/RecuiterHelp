@@ -23,6 +23,7 @@ order:
   - noreply_sender
   - job_alert_sender
   - transactional_sender
+  - campaign_subdomain
 
 rules:
   # Our own sent mail. Replying to ourselves would loop.
@@ -152,3 +153,31 @@ rules:
       - offers-noreply
     addresses: []
     domains: []
+
+  # Bulk-mail infrastructure in the sending subdomain. Matched on the leftmost label of the
+  # domain only, with any trailing shard number stripped, so `campaign1.nipponindia.email` and
+  # `campaign2.x.com` both match via `campaign`.
+  #
+  # Found on a real inbox: two Nippon Life marketing emails from
+  # nimfupdates@campaign1.nipponindia.email reached the model. They carry no List-Unsubscribe,
+  # no List-Id and no Precedence, so every header rule missed them, and `nimfupdates` correctly
+  # does not match `updates` under whole-segment local-part matching. Gmail's own
+  # `-category:promotions` caught one of the two and not the other, so it is not sufficient
+  # alone either.
+  #
+  # `mail` and `email` are deliberately absent: a small agency plausibly sends its real mail
+  # from mail.agency.com, and a false drop is the one failure that leaves no trace.
+  campaign_subdomain:
+    enabled: true
+    labels:
+      - campaign
+      - campaigns
+      - mailer
+      - mailers
+      - sendgrid
+      - mailgun
+      - mktomail
+      - marketing
+      - newsletter
+      - bulk
+      - blast

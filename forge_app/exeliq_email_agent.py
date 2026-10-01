@@ -57,6 +57,60 @@ def engine_status() -> tuple[bool, dict[str, Any]]:
         return False, {"detail": str(exc)[:160]}
 
 
+def mailbox_status() -> dict[str, Any]:
+    """Whether a real mailbox is connected, and which one."""
+    try:
+        r = requests.get(f"{EMAIL_ENGINE_URL}/api/gmail/status", timeout=8)
+        return r.json() if r.status_code < 400 else {"connected": False, "detail": r.text[:160]}
+    except requests.RequestException as exc:
+        return {"connected": False, "detail": str(exc)[:160]}
+
+
+#: Gmail's own promotions classifier is a better bulk detector than any keyword list we could
+#: write, and it is free. An earlier version of this queue asked for a bare `in:inbox` and a
+#: Nippon Life SIP advert came through marked "worth screening": it carries no
+#: List-Unsubscribe, no List-Id and no Precedence header, so there was nothing for our
+#: rules to catch, and the sender `nimfupdates@` does not match `updates` because the rules
+#: match whole segments rather than substrings -- deliberately, since a substring match is how
+#: you get a false drop on a real agency. Letting Gmail exclude its own promotions category
+#: costs nothing and does not widen our own rules, which stay narrow on purpose.
+LEAD_QUERY = "in:inbox -category:promotions"
+
+
+def fetch_leads(limit: int = 15, query: str = LEAD_QUERY) -> dict[str, Any]:
+    """Recent mail with the two free stages already applied.
+
+    Pre-filter and sender verification cost nothing -- no model call -- so running them during
+    the fetch means the queue can show which messages are even worth spending a call on.
+    """
+    try:
+        r = requests.get(
+            f"{EMAIL_ENGINE_URL}/api/gmail/messages",
+            params={"limit": limit, "query": query},
+            timeout=TIMEOUT_SECONDS,
+        )
+        if r.status_code >= 400:
+            return {"error": r.json().get("detail", r.text[:200])}
+        return r.json()
+    except requests.RequestException as exc:
+        return {"error": f"Could not read the mailbox: {exc}"}
+
+
+def screen_lead(message_id: str) -> dict[str, Any]:
+    """Run one real message from the mailbox through the whole pipeline."""
+    try:
+        r = requests.post(
+            f"{EMAIL_ENGINE_URL}/api/gmail/run",
+            data={"message_id": message_id, "save": "no"},
+            timeout=TIMEOUT_SECONDS,
+        )
+        if r.status_code >= 400:
+            return {"error": r.json().get("detail", r.text[:200])}
+        return r.json()
+    except requests.RequestException as exc:
+        return {"error": f"Screening failed: {exc}"}
+
+
 def screen_email(sender: str, subject: str, body: str) -> dict[str, Any]:
     try:
         response = requests.post(
@@ -91,21 +145,51 @@ RAIL = [
 ]
 
 
+HOW_IT_WORKS = """
+Every lead passes through six gates, in this order. The order is the point: the two cheapest
+checks run first, so bulk mail and spoofed senders are gone before anything is spent on a
+model call.
+
+1. **Pre-filter** — bulk mail, newsletters and no-reply senders are dropped on rules alone.
+   No AI runs, so these cost nothing.
+2. **Sender verification** — SPF, DKIM and DMARC must *all* pass, and only the mail server's
+   own authentication header is believed. A domain that merely looks like a client's is
+   flagged, not trusted.
+3. **Classify and extract** — the model decides whether this is really a recruiter, what the
+   role is, and which skills are required. Anything it is unsure about is held rather than
+   guessed at.
+4. **Match profiles** — candidates are scored out of 100 across six dimensions. Nobody below
+   40 is ever put forward.
+5. **Compose draft** — a reply is written, with the matching resumes attached.
+6. **Validate** — length, tone and factual claims are checked against what was extracted. A
+   draft that fails is thrown away, not quietly sent.
+
+**Nothing is ever sent.** The mailbox connection was granted read and draft permission only;
+send permission was deliberately never requested, so the agent is not capable of sending mail
+even if asked to. Every reply waits for you.
+"""
+
+
 def render(st, render_gauge) -> None:
-    """Draw the page. `render_gauge` is accepted for signature compatibility with the host app
-    but unused: bars compare better than gauges when there are several candidates."""
-    ok, info = engine_status()
+    """Draw the page.
+
+    The mailbox queue leads. An earlier version opened with a paste-one-email form, which got
+    the product backwards: a desk taking fifteen to twenty leads a day wants the agent watching
+    the inbox and handing them a reviewed queue, not a box to retype into. Pasting is still
+    here, because forwarded leads and testing both need it, but it is no longer the main event.
+    """
+    engine_ok, engine_info = engine_status()
 
     st.markdown(
         f'<div style="font-size:26px;font-weight:700;color:{INK};margin-bottom:2px;">'
         f'Email Agent</div>'
         f'<div style="color:{MUTED};font-size:14px;margin-bottom:18px;">'
-        f'Screens inbound job leads, finds who fits, and writes the reply. '
+        f'Watches the mailbox, screens each job lead, finds who fits and writes the reply. '
         f'You send it &mdash; this never sends anything itself.</div>',
         unsafe_allow_html=True,
     )
 
-    if not ok:
+    if not engine_ok:
         st.markdown(
             f'<div style="background:{HOLD_BG};border-radius:14px;padding:18px 20px;">'
             f'<div style="font-weight:600;color:{HOLD};">Screening engine is not running</div>'
@@ -113,24 +197,97 @@ def render(st, render_gauge) -> None:
             f'Start it, then reload this page.</div></div>',
             unsafe_allow_html=True,
         )
-        st.code(".venv\\Scripts\\python.exe -m prototype.app", language="text")
+        st.code(".venv\Scripts\python.exe -m prototype.app", language="text")
         return
+
+    mailbox = mailbox_status()
+    tab_queue, tab_paste, tab_how = st.tabs(["Mailbox", "Paste an email", "How it works"])
+
+    with tab_queue:
+        _render_queue(st, mailbox)
+
+    with tab_paste:
+        st.markdown(
+            f'<div style="color:{MUTED};font-size:13px;margin-bottom:12px;">'
+            f'For a lead that was forwarded to you, or to try the screening on something '
+            f'that is not in the connected mailbox.</div>',
+            unsafe_allow_html=True,
+        )
+        _render_form(st, engine_info)
+
+    with tab_how:
+        st.markdown(HOW_IT_WORKS)
 
     result = st.session_state.get("exeliq_email_result")
     if result:
+        st.markdown("---")
         _render_result(st, result)
-        st.write("")
-
-    _render_form(st, info, has_result=bool(result))
 
 
-def _render_form(st, info: dict, has_result: bool) -> None:
-    if has_result:
+def _render_queue(st, mailbox: dict[str, Any]) -> None:
+    if not mailbox.get("connected"):
         st.markdown(
-            f'<div style="font-size:15px;font-weight:700;color:{INK};margin:20px 0 6px;">'
-            f'Screen another email</div>',
+            f'<div style="background:{HOLD_BG};border-radius:14px;padding:18px 20px;">'
+            f'<div style="font-weight:600;color:{HOLD};">No mailbox connected</div>'
+            f'<div style="color:{INK};font-size:13.5px;margin-top:6px;max-width:62ch;">'
+            f'Connect the mailbox once and the agent reads it from then on. '
+            f'{mailbox.get("detail", "")}</div></div>',
             unsafe_allow_html=True,
         )
+        st.link_button("Connect a mailbox", f"{EMAIL_ENGINE_URL}/#gmail", type="primary")
+        return
+
+    head, controls = st.columns([2, 1])
+    with head:
+        st.markdown(
+            f'<div style="font-weight:650;color:{INK};font-size:14.5px;">'
+            f'{mailbox.get("address", "")}</div>'
+            f'<div style="color:{MUTED};font-size:12.5px;">Read and draft only. '
+            f'No send permission was granted.</div>',
+            unsafe_allow_html=True,
+        )
+    with controls:
+        if st.button("Fetch leads", type="primary", use_container_width=True):
+            with st.spinner("Reading the mailbox"):
+                st.session_state.exeliq_leads = fetch_leads(
+                    limit=st.session_state.get("exeliq_lead_count", 15)
+                )
+            st.rerun()
+
+    st.slider("How many to read", 5, 50, 15, key="exeliq_lead_count")
+
+    leads = st.session_state.get("exeliq_leads")
+    if not leads:
+        st.markdown(
+            f'<div style="color:{MUTED};font-size:13.5px;margin-top:14px;">'
+            f'Fetch to see what has arrived. Each lead is checked for bulk mail and a '
+            f'spoofed sender first, which costs nothing, so you can see which ones are '
+            f'worth reading before spending anything on them.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    if leads.get("error"):
+        st.markdown(
+            f'<div style="color:{STOP};font-size:13.5px;">{leads["error"]}</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    messages = leads.get("messages", [])
+    worth_reading = [m for m in messages if m.get("would_reach_model")]
+    st.markdown(
+        f'<div style="color:{INK};font-size:13.5px;margin:14px 0 10px;">'
+        f'<b>{len(messages)}</b> read &middot; <b>{len(worth_reading)}</b> worth screening '
+        f'&middot; {len(messages) - len(worth_reading)} filtered out already</div>',
+        unsafe_allow_html=True,
+    )
+
+    for message in messages:
+        _render_lead_row(st, message)
+
+
+def _render_form(st, info: dict) -> None:
     with st.form("exeliq_email_agent_form"):
         left, right = st.columns(2)
         with left:
@@ -155,6 +312,36 @@ def _render_form(st, info: dict, has_result: bool) -> None:
         f'against {info.get("profiles", 0)} candidate profiles.</div>',
         unsafe_allow_html=True,
     )
+
+
+def _render_lead_row(st, message: dict[str, Any]) -> None:
+    if not message.get("prefilter_keep"):
+        state, colour = f"bulk: {message.get('prefilter_rule')}", MUTED
+    elif message.get("auth") != "pass":
+        state, colour = f"sender not verified ({message.get('auth')})", STOP
+    else:
+        state, colour = "worth screening", PASS
+
+    row, action = st.columns([5, 1])
+    with row:
+        flags = message.get("auth_flags") or []
+        st.markdown(
+            f'<div style="border-left:3px solid {colour};padding:2px 0 2px 12px;">'
+            f'<div style="font-weight:600;color:{INK};font-size:13.5px;">'
+            f'{message.get("subject") or "(no subject)"}</div>'
+            f'<div style="color:{MUTED};font-size:12.5px;">'
+            f'{message.get("from_name") or message.get("from_email")} &middot; {state}'
+            + (f' &middot; <span style="color:{HOLD};">{", ".join(flags)}</span>' if flags else "")
+            + f'</div></div>',
+            unsafe_allow_html=True,
+        )
+    with action:
+        if message.get("would_reach_model"):
+            if st.button("Screen", key=f"lead_{message['id']}", use_container_width=True):
+                with st.spinner("Screening this lead"):
+                    st.session_state.exeliq_email_result = screen_lead(message["id"])
+                st.rerun()
+    st.write("")
 
 
 def _render_result(st, result: dict[str, Any]) -> None:
