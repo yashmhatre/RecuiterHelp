@@ -35,7 +35,7 @@ from fastapi.staticfiles import StaticFiles
 
 from email_agent.config import load_dotenv_if_present
 from prototype import gmail_client, llm, store
-from prototype.pipeline import email_from_form, run_pipeline
+from prototype.pipeline import classify, email_from_form, match_profiles, run_pipeline
 from prototype.resume_text import extract_profile_hints, parse_resume
 
 load_dotenv_if_present()
@@ -705,6 +705,66 @@ def api_label_skip(email_id: str = Form(...)) -> JSONResponse:
 @app.get("/api/label/stats")
 def api_label_stats() -> JSONResponse:
     return JSONResponse(_label_stats())
+
+
+# ---------------------------------------------------------------------------
+# JD analysis, for the FORGE AI app
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/jd/analyze")
+def api_jd_analyze(jd_text: str = Form(...), role_hint: str = Form("")) -> JSONResponse:
+    """Parse a raw job description and score it against the candidate database.
+
+    Exists so the FORGE AI Streamlit app can use this pipeline in place of its own keyword
+    matcher. Their parser finds skills but cannot tell a must-have from a nice-to-have, and
+    its match figure is a linear function of raw overlap count rather than the 100-point rubric
+    their own forge-candidate-matching specification defines.
+
+    The response carries both: the keys their UI already renders, so no page breaks, plus the
+    tiered skills and FORGE Match report it has no equivalent for.
+    """
+    if not jd_text.strip():
+        raise HTTPException(400, "No job description text supplied.")
+
+    # classify() takes a RawEmail. A pasted JD has no envelope, so synthesise a neutral one:
+    # pre-filter and sender verification are deliberately skipped here, because this text did
+    # not arrive as mail and there is no sender to authenticate.
+    email = email_from_form(
+        sender="jd-paste@localhost", subject=role_hint or "Job description", body=jd_text
+    )
+    fields, backend, latency_ms = classify(email)
+
+    profiles = store.list_profiles()
+    matches = match_profiles(fields, profiles)
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "backend": backend,
+            "latency_ms": latency_ms,
+            "role_title": fields.get("role"),
+            "must_have_skills": fields.get("must_have_skills") or [],
+            "preferred_skills": fields.get("preferred_skills") or [],
+            "nice_to_have_skills": fields.get("nice_to_have_skills") or [],
+            "all_skills": fields.get("skills") or [],
+            "min_years_experience": fields.get("min_years_experience"),
+            "location": fields.get("location"),
+            "matches": [
+                {
+                    "name": m["name"],
+                    "title": m["title"],
+                    "score": m["score"],
+                    "signal": m.get("signal"),
+                    "reason": m["reason"],
+                    "dimensions": m.get("dimensions", []),
+                    "forge": m.get("forge", {}),
+                }
+                for m in matches
+            ],
+            "profiles_considered": len(profiles),
+        }
+    )
 
 
 @app.get("/api/status")

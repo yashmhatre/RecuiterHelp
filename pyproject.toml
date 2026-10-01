@@ -77,8 +77,11 @@ addopts = "-q --strict-markers"
 [tool.ruff]
 line-length = 110
 target-version = "py311"
-# Client reference material. Read-only: we never lint, format or edit it.
-extend-exclude = ["Forge_AI"]
+# Forge_AI is client reference material: read-only, never linted or edited.
+# forge_app is our working copy of their Streamlit app. Excluded because reformatting 2,900
+# lines of someone else's code would bury our actual changes in style noise and make the diff
+# impossible for them to merge back. Our edits to it are kept surgical and commented instead.
+extend-exclude = ["Forge_AI", "forge_app"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

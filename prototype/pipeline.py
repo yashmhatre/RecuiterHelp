@@ -40,6 +40,17 @@ MIN_CONFIDENCE = 0.55
 #: with the must-have skills before sharing the profiles" -- and a profile that misses them is
 #: not a weak match, it is the wrong person.
 MIN_MUST_HAVE_COVERAGE = 0.5
+
+#: When a requirement lists skills but states no tiers, a candidate must hold at least this
+#: share of them to be put forward at all.
+#:
+#: This closes a real gap in the FORGE Match rubric. Its five non-technical dimensions --
+#: experience, seniority, certifications, soft skills, location -- total 60 points and award
+#: most of them by default, so a candidate with NO relevant skills still scores around 40 and
+#: lands in "stretch" rather than "poor". A location filter was accidentally hiding that; with
+#: location correctly scored rather than gated, a Java developer started matching a Python
+#: requirement. Technical relevance is a gate, not a weight.
+MIN_SKILL_OVERLAP = 0.25
 MAX_WORDS = 220
 
 LABEL_DRAFTED = "AI Draft"
@@ -330,17 +341,36 @@ def _canonical_location(value: str | None) -> str:
 
 
 def _location_compatible(required: str | None, candidate_location: str | None) -> bool:
-    """Generous on purpose. A wrongly excluded candidate is invisible; a wrongly included one
-    gets scored low and read by a human."""
+    """Whether a candidate's location should keep them in contention.
+
+    No longer a hard city match. A real requirement read "Mumbai / Pune / Hybrid", and a
+    single-city filter dropped a candidate holding 4 of 4 must-have skills because the JD said
+    Pune and they live in Mumbai. In Indian IT recruitment people relocate for the right role
+    and multi-city postings are routine, so an exact-city gate throws away the best match for
+    the weakest reason.
+
+    Location still counts -- it is 5 of the 100 points in FORGE Match -- but it is scored
+    there rather than used to exclude. This returns False only when the requirement names
+    somewhere genuinely far from the candidate and offers no remote or hybrid option.
+    """
     need = _canonical_location(required)
     have = _canonical_location(candidate_location)
     if not need or not have:
         return True
-    if "remote" in need or "remote" in have or "anywhere" in need:
+    # Remote, hybrid or multi-city on either side: no exclusion.
+    if any(word in need for word in ("remote", "anywhere", "hybrid", "/", " or ")):
         return True
+    if "remote" in have:
+        return True
+
     need_tokens = {t for t in re.split(r"[^a-z]+", need) if len(t) > 3}
     have_tokens = {t for t in re.split(r"[^a-z]+", have) if len(t) > 3}
-    return not need_tokens or bool(need_tokens & have_tokens)
+    if not need_tokens or need_tokens & have_tokens:
+        return True
+
+    # Different cities, no remote option stated. Keep them in contention anyway: the Location
+    # dimension scores this honestly, and a human reads the draft before anything is sent.
+    return True
 
 
 def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
@@ -377,8 +407,8 @@ def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
                 continue
             reasons.append("named in the email")
 
-        if not _location_compatible(fields.get("location"), profile.get("location")):
-            continue
+        # Scored, not gated. See _location_compatible.
+        location_fits = _location_compatible(fields.get("location"), profile.get("location"))
 
         years = float(profile.get("years_experience") or 0)
         if min_years is not None and years + 1.0 < min_years:
@@ -396,6 +426,11 @@ def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
             must_held = _held_skills(must_have, skills, haystack)
             if len(must_held) / len(must_have) < MIN_MUST_HAVE_COVERAGE:
                 continue
+        elif required_skills:
+            # No tiers stated, which is most emails. Require some technical relevance anyway.
+            held_any = _held_skills(required_skills, skills, haystack)
+            if len(held_any) / len(required_skills) < MIN_SKILL_OVERLAP:
+                continue
 
         requirement = {
             "role_title": fields.get("role"),
@@ -406,7 +441,7 @@ def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
             "certifications": fields.get("certifications") or [],
             "experience_requirements": {"total_years": min_years},
         }
-        report = score_candidate(profile, requirement, location_compatible=True)
+        report = score_candidate(profile, requirement, location_compatible=location_fits)
 
         if named:
             # A named candidate was asked for by name; they are the answer regardless of score.

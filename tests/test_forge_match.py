@@ -308,3 +308,32 @@ def test_gaps_record_whether_they_were_required_or_preferred():
 
     types = {g["type"] for g in report.gaps}
     assert "Required" in types
+
+
+# ---------------------------------------------------------------------------
+# The gap in the FORGE rubric that our gates close
+# ---------------------------------------------------------------------------
+
+
+def test_the_non_technical_dimensions_alone_cannot_reach_the_submission_floor():
+    """The documented gap, asserted so it cannot be forgotten.
+
+    FORGE Match awards 60 of its 100 points outside Core Technical Skills, and awards most of
+    them by default: full marks for certifications nobody asked for, half marks for a terse
+    profile's soft skills, most of the location points for any plausible location. A candidate
+    with zero relevant skills therefore scores around 40 on their own, which is "stretch", not
+    "poor".
+
+    That is why matching keeps a technical-relevance gate in front of the rubric rather than
+    relying on the bands. If this test starts failing because the floor rose above 40, the
+    gate in match_profiles is the only thing preventing unqualified submissions.
+    """
+    no_skills = profile(skills=[], summary="", title="")
+
+    report = score_candidate(no_skills, requirement())
+
+    non_technical = sum(
+        v for k, v in report.dimension_scores.items() if k != "Core Technical Skills"
+    )
+    assert non_technical >= 30, "if this drops, the gate may no longer be needed"
+    assert report.dimension_scores["Core Technical Skills"] == 0

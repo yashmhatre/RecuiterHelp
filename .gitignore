@@ -51,3 +51,7 @@ prototype/data/
 
 # Client reference material, supplied by Exeliq. Read-only: never edited, linted or committed.
 Forge_AI/
+
+# FORGE AI Streamlit app data: real accounts, hashed passwords, uploaded resumes and photos.
+forge_app/forge_ai_data/
+.venv-forge/
