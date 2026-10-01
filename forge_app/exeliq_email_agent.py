@@ -77,16 +77,20 @@ def mailbox_status() -> dict[str, Any]:
 LEAD_QUERY = "in:inbox -category:promotions"
 
 
-def fetch_leads(limit: int = 15, query: str = LEAD_QUERY) -> dict[str, Any]:
-    """Recent mail with the two free stages already applied.
+def fetch_leads(
+    limit: int = 15, query: str = LEAD_QUERY, classify: bool = True
+) -> dict[str, Any]:
+    """Recent mail, classified, so the queue can show only genuine recruiter leads.
 
-    Pre-filter and sender verification cost nothing -- no model call -- so running them during
-    the fetch means the queue can show which messages are even worth spending a call on.
+    Pre-filter and sender verification cost nothing -- no model call -- so they run first and
+    keep newsletters out of the classifier entirely. Each message that survives is then
+    classified, which does cost a call, but once per message ever: the engine caches verdicts,
+    so refetching the same inbox is free.
     """
     try:
         r = requests.get(
             f"{EMAIL_ENGINE_URL}/api/gmail/messages",
-            params={"limit": limit, "query": query},
+            params={"limit": limit, "query": query, "classify": str(classify).lower()},
             timeout=TIMEOUT_SECONDS,
         )
         if r.status_code >= 400:
@@ -259,10 +263,12 @@ def _render_queue(st, mailbox: dict[str, Any]) -> None:
     leads = st.session_state.get("exeliq_leads")
     if not leads:
         st.markdown(
-            f'<div style="color:{MUTED};font-size:13.5px;margin-top:14px;">'
-            f'Fetch to see what has arrived. Each lead is checked for bulk mail and a '
-            f'spoofed sender first, which costs nothing, so you can see which ones are '
-            f'worth reading before spending anything on them.</div>',
+            f'<div style="color:{MUTED};font-size:13.5px;margin-top:14px;max-width:64ch;">'
+            f'Fetch to see what has arrived. Bulk mail and spoofed senders are dropped on '
+            f'rules alone first, which costs nothing, and everything left is read and '
+            f'classified &mdash; so the list you get back is the real recruiter mail. Each '
+            f'email is only ever read once; refetching reuses what was already worked out.'
+            f'</div>',
             unsafe_allow_html=True,
         )
         return
@@ -275,16 +281,79 @@ def _render_queue(st, mailbox: dict[str, Any]) -> None:
         return
 
     messages = leads.get("messages", [])
-    worth_reading = [m for m in messages if m.get("would_reach_model")]
+
+    # Three buckets. The split is the whole point of the page: a reviewer should see the real
+    # leads and nothing else, without anything having been thrown away behind their back.
+    recruiters = [m for m in messages if m.get("verdict") == "recruiter"]
+    held = [m for m in messages if m.get("verdict") == "needs_review"]
+    unclassified = [
+        m for m in messages
+        if m.get("would_reach_model") and m.get("verdict") not in {"recruiter", "needs_review", "not_recruiter"}
+    ]
+    filtered = [m for m in messages if m not in recruiters and m not in held and m not in unclassified]
+
     st.markdown(
-        f'<div style="color:{INK};font-size:13.5px;margin:14px 0 10px;">'
-        f'<b>{len(messages)}</b> read &middot; <b>{len(worth_reading)}</b> worth screening '
-        f'&middot; {len(messages) - len(worth_reading)} filtered out already</div>',
+        f'<div style="color:{INK};font-size:13.5px;margin:14px 0 4px;">'
+        f'<b>{len(messages)}</b> read &middot; '
+        f'<b style="color:{PASS};">{len(recruiters)}</b> real recruiter '
+        f'email{"" if len(recruiters) == 1 else "s"}'
+        + (f' &middot; <b style="color:{HOLD};">{len(held)}</b> held for you' if held else "")
+        + f' &middot; {len(filtered)} not recruiter mail</div>',
         unsafe_allow_html=True,
     )
 
-    for message in messages:
-        _render_lead_row(st, message)
+    if recruiters:
+        for message in recruiters:
+            _render_lead_row(st, message)
+    else:
+        st.markdown(
+            f'<div style="background:{TINT};border-radius:14px;padding:18px 20px;margin-top:10px;">'
+            f'<div style="font-weight:600;color:{INK};font-size:14px;">'
+            f'No recruiter mail in the last {len(messages)} messages</div>'
+            f'<div style="color:{MUTED};font-size:13px;margin-top:5px;max-width:62ch;">'
+            f'Everything that arrived was newsletters, alerts or ordinary mail. Read further '
+            f'back with the slider, or check the groups below to see what was set aside.'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    # Held: the model was unsure, or contradicted itself. These are NOT hidden behind a
+    # collapsed section -- every route into this bucket exists because trusting the model there
+    # once lost a genuine lead, so they sit in the open with the real ones.
+    if held:
+        st.markdown(
+            f'<div style="font-size:14px;font-weight:700;color:{HOLD};margin:22px 0 2px;">'
+            f'Held for you to decide</div>'
+            f'<div style="color:{MUTED};font-size:12.5px;margin-bottom:10px;max-width:62ch;">'
+            f'The model was not confident enough, or extracted a requirement while saying this '
+            f'was not a recruiter. Shown rather than dropped, because guessing wrong here loses '
+            f'a real lead silently.</div>',
+            unsafe_allow_html=True,
+        )
+        for message in held:
+            _render_lead_row(st, message)
+
+    if unclassified:
+        st.markdown(
+            f'<div style="font-size:14px;font-weight:700;color:{STOP};margin:22px 0 2px;">'
+            f'Could not be classified</div>',
+            unsafe_allow_html=True,
+        )
+        for message in unclassified:
+            _render_lead_row(st, message)
+
+    # Everything else, countable but out of the way. Collapsed, not omitted: a wrongly filtered
+    # email is the one failure that otherwise leaves no trace.
+    if filtered:
+        with st.expander(f"{len(filtered)} message{'' if len(filtered) == 1 else 's'} set aside"):
+            st.markdown(
+                f'<div style="color:{MUTED};font-size:12.5px;margin-bottom:10px;">'
+                f'Bulk mail and no-reply senders were dropped on rules alone, before any AI '
+                f'ran. The rest were read and judged not to be recruiter mail.</div>',
+                unsafe_allow_html=True,
+            )
+            for message in filtered:
+                _render_lead_row(st, message, compact=True)
 
 
 def _render_form(st, info: dict) -> None:
@@ -314,25 +383,83 @@ def _render_form(st, info: dict) -> None:
     )
 
 
-def _render_lead_row(st, message: dict[str, Any]) -> None:
+#: intent -> what it means in plain words. The enum values are the engine's; a reviewer should
+#: not have to learn them.
+INTENTS = {
+    "new_requirement": "new requirement",
+    "resume_request": "asking for a resume",
+    "follow_up": "following up",
+    "interview": "interview",
+    "other": "something else",
+}
+
+
+def _lead_state(message: dict[str, Any]) -> tuple[str, str]:
+    """The one line that explains why this email is where it is."""
     if not message.get("prefilter_keep"):
-        state, colour = f"bulk: {message.get('prefilter_rule')}", MUTED
-    elif message.get("auth") != "pass":
-        state, colour = f"sender not verified ({message.get('auth')})", STOP
-    else:
-        state, colour = "worth screening", PASS
+        return f"bulk: {message.get('prefilter_rule')}", MUTED
+    if message.get("auth") != "pass":
+        return f"sender not verified ({message.get('auth')})", STOP
+
+    verdict = message.get("verdict")
+    fields = message.get("classification") or {}
+    if fields.get("error"):
+        return f"could not classify: {fields['error']}", STOP
+
+    if verdict == "recruiter":
+        bits = [INTENTS.get(fields.get("intent"), "recruiter")]
+        if fields.get("role"):
+            bits.append(str(fields["role"]))
+        if fields.get("min_years_experience"):
+            bits.append(f"{fields['min_years_experience']:g}+ yrs")
+        if fields.get("location"):
+            bits.append(str(fields["location"]))
+        return " &middot; ".join(bits), PASS
+    if verdict == "needs_review":
+        if fields.get("contradiction"):
+            return "contradicted itself &mdash; extracted a requirement but said not a recruiter", HOLD
+        if fields.get("model_uncertain"):
+            return "the model returned no usable answer", HOLD
+        return f"not confident enough ({fields.get('confidence', 0):.0%})", HOLD
+    if verdict == "not_recruiter":
+        return "read, not recruiter mail", MUTED
+    return "not classified", MUTED
+
+
+def _render_lead_row(st, message: dict[str, Any], compact: bool = False) -> None:
+    state, colour = _lead_state(message)
+
+    if compact:
+        st.markdown(
+            f'<div style="border-left:3px solid {colour};padding:1px 0 1px 10px;'
+            f'margin-bottom:7px;">'
+            f'<div style="color:{INK};font-size:12.5px;">'
+            f'{message.get("subject") or "(no subject)"}</div>'
+            f'<div style="color:{MUTED};font-size:11.5px;">'
+            f'{message.get("from_name") or message.get("from_email")} &middot; {state}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        return
 
     row, action = st.columns([5, 1])
     with row:
         flags = message.get("auth_flags") or []
+        skills = (message.get("classification") or {}).get("skills") or []
         st.markdown(
             f'<div style="border-left:3px solid {colour};padding:2px 0 2px 12px;">'
             f'<div style="font-weight:600;color:{INK};font-size:13.5px;">'
             f'{message.get("subject") or "(no subject)"}</div>'
             f'<div style="color:{MUTED};font-size:12.5px;">'
-            f'{message.get("from_name") or message.get("from_email")} &middot; {state}'
+            f'{message.get("from_name") or message.get("from_email")} &middot; '
+            f'<span style="color:{colour};">{state}</span>'
             + (f' &middot; <span style="color:{HOLD};">{", ".join(flags)}</span>' if flags else "")
-            + f'</div></div>',
+            + "</div>"
+            + (
+                f'<div style="color:{MUTED};font-size:11.5px;margin-top:3px;">'
+                f'{", ".join(skills[:8])}</div>' if skills else ""
+            )
+            + "</div>",
             unsafe_allow_html=True,
         )
     with action:

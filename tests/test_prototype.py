@@ -18,11 +18,16 @@ import pytest
 from email_agent.contracts import AuthResult
 from pipeline.verify import verify
 from prototype.pipeline import (
+    MIN_CONFIDENCE,
+    VERDICT_NEEDS_REVIEW,
+    VERDICT_NOT_RECRUITER,
+    VERDICT_RECRUITER,
     compose_draft,
     email_from_form,
     match_profiles,
     requested_person_names,
     run_pipeline,
+    triage_verdict,
     validate_draft,
 )
 
@@ -908,3 +913,180 @@ def test_an_existing_database_gains_the_column(tmp_path, monkeypatch):
     columns = {row[1] for row in conn.execute("PRAGMA table_info(candidates)")}
     conn.close()
     assert "seniority" in columns
+
+
+# ---------------------------------------------------------------------------
+# Triage: which classifications count as a real recruiter email
+#
+# The inbox queue shows only `recruiter`, so a mistake here is an email the reviewer never
+# sees. `triage_verdict` is the single source of that decision -- `run` uses it too, so the
+# queue and the pipeline cannot disagree.
+# ---------------------------------------------------------------------------
+
+
+def _fields(**overrides):
+    base = {
+        "is_recruiter": True,
+        "confidence": 0.9,
+        "intent": "new_requirement",
+        "role": "Data Engineer",
+        "skills": ["python", "sql"],
+        "min_years_experience": 5.0,
+        "resume_requested": False,
+        "candidate_names": [],
+        "contradiction": False,
+    }
+    return {**base, **overrides}
+
+
+def test_a_confident_recruiter_email_is_a_real_lead():
+    assert triage_verdict(_fields()) == VERDICT_RECRUITER
+
+
+def test_a_confident_non_recruiter_is_filtered_out():
+    assert triage_verdict(_fields(is_recruiter=False, confidence=0.95)) == VERDICT_NOT_RECRUITER
+
+
+@pytest.mark.parametrize("confidence", [0.0, 0.2, 0.54])
+def test_an_unconfident_recruiter_email_is_held_not_shown_as_real(confidence):
+    """Below the bar it must not reach the queue's main list, but must not vanish either."""
+    assert triage_verdict(_fields(confidence=confidence)) == VERDICT_NEEDS_REVIEW
+
+
+def test_the_confidence_bar_is_inclusive():
+    assert triage_verdict(_fields(confidence=MIN_CONFIDENCE)) == VERDICT_RECRUITER
+    assert triage_verdict(_fields(confidence=MIN_CONFIDENCE - 0.01)) == VERDICT_NEEDS_REVIEW
+
+
+def test_a_schema_failure_is_held_rather_than_filtered_out():
+    """Confidence 0.0 with is_recruiter false is the fallback default, not a confident no.
+
+    Filtering these out would be indistinguishable from the email never arriving.
+    """
+    fields = _fields(is_recruiter=False, confidence=0.0, model_uncertain=True)
+    assert triage_verdict(fields) == VERDICT_NEEDS_REVIEW
+
+
+def test_a_contradiction_is_held_and_never_filtered_out():
+    """classify() caps a contradiction at 0.5, which must land in review, not in the bin."""
+    fields = _fields(is_recruiter=True, confidence=0.5, contradiction=True)
+    assert triage_verdict(fields) == VERDICT_NEEDS_REVIEW
+
+
+def test_the_queue_and_the_pipeline_agree_on_every_shape():
+    """`run` routes on triage_verdict, so these are the only three outcomes it can produce."""
+    assert {
+        triage_verdict(_fields()),
+        triage_verdict(_fields(is_recruiter=False, confidence=0.9)),
+        triage_verdict(_fields(confidence=0.1)),
+    } == {VERDICT_RECRUITER, VERDICT_NOT_RECRUITER, VERDICT_NEEDS_REVIEW}
+
+
+# ---------------------------------------------------------------------------
+# Triage cache: a model call per email, not per page refresh
+# ---------------------------------------------------------------------------
+
+
+def test_a_verdict_survives_and_comes_back_whole(tmp_path):
+    from prototype import store
+
+    db = tmp_path / "t.db"
+    store.init_db(db)
+    fields = _fields(role="Senior Data Engineer")
+    store.save_triage(
+        message_id="m1", verdict=VERDICT_RECRUITER, fields=fields, backend="gemini", db_path=db
+    )
+
+    hit = store.get_triage(["m1"], db_path=db)["m1"]
+    assert hit["verdict"] == VERDICT_RECRUITER
+    assert hit["is_recruiter"] is True
+    assert hit["fields"]["role"] == "Senior Data Engineer"
+    assert hit["fields"]["skills"] == ["python", "sql"]
+    assert hit["backend"] == "gemini"
+
+
+def test_uncached_messages_are_simply_absent(tmp_path):
+    """The caller distinguishes "no verdict yet" from "classified as not a recruiter"."""
+    from prototype import store
+
+    db = tmp_path / "t.db"
+    store.init_db(db)
+    store.save_triage(message_id="m1", verdict=VERDICT_RECRUITER, fields=_fields(), db_path=db)
+
+    found = store.get_triage(["m1", "m2", "m3"], db_path=db)
+    assert set(found) == {"m1"}
+
+
+def test_asking_for_nothing_costs_no_query(tmp_path):
+    from prototype import store
+
+    db = tmp_path / "t.db"
+    store.init_db(db)
+    assert store.get_triage([], db_path=db) == {}
+
+
+def test_reclassifying_replaces_rather_than_duplicates(tmp_path):
+    from prototype import store
+
+    db = tmp_path / "t.db"
+    store.init_db(db)
+    store.save_triage(message_id="m1", verdict=VERDICT_NEEDS_REVIEW,
+                      fields=_fields(confidence=0.4), db_path=db)
+    store.save_triage(message_id="m1", verdict=VERDICT_RECRUITER,
+                      fields=_fields(confidence=0.9), db_path=db)
+
+    found = store.get_triage(["m1"], db_path=db)
+    assert len(found) == 1
+    assert found["m1"]["verdict"] == VERDICT_RECRUITER
+    assert found["m1"]["confidence"] == pytest.approx(0.9)
+
+
+def test_the_cache_can_be_cleared_when_the_prompt_changes(tmp_path):
+    from prototype import store
+
+    db = tmp_path / "t.db"
+    store.init_db(db)
+    store.save_triage(message_id="m1", verdict=VERDICT_RECRUITER, fields=_fields(), db_path=db)
+    store.save_triage(message_id="m2", verdict=VERDICT_RECRUITER, fields=_fields(), db_path=db)
+
+    assert store.clear_triage(db_path=db) == 2
+    assert store.get_triage(["m1", "m2"], db_path=db) == {}
+
+
+def test_the_triage_table_appears_on_a_database_that_predates_it(tmp_path):
+    """A new table is safe under executescript, unlike a new column. Pinned so it stays safe."""
+    from prototype import store
+
+    db = tmp_path / "t.db"
+    store.init_db(db)
+    with store.connect(db) as conn:
+        conn.execute("DROP TABLE triage")
+
+    store.init_db(db)  # as if the app restarted after the upgrade
+    store.save_triage(message_id="m1", verdict=VERDICT_RECRUITER, fields=_fields(), db_path=db)
+    assert store.get_triage(["m1"], db_path=db)["m1"]["verdict"] == VERDICT_RECRUITER
+
+
+def test_an_unconfident_no_is_held_not_filtered_out():
+    """The confidence bar applies to both answers.
+
+    An unconfident "no" used to be filtered out while an unconfident "yes" was held. Once the
+    queue started hiding non-recruiter mail, that asymmetry turned "not sure this is a
+    recruiter" into an email nobody ever saw.
+    """
+    fields = _fields(is_recruiter=False, confidence=0.1)
+    assert triage_verdict(fields) == VERDICT_NEEDS_REVIEW
+
+
+@pytest.mark.parametrize("is_recruiter", [True, False])
+def test_the_bar_sits_at_the_same_place_for_both_answers(is_recruiter):
+    below = _fields(is_recruiter=is_recruiter, confidence=MIN_CONFIDENCE - 0.01)
+    at = _fields(is_recruiter=is_recruiter, confidence=MIN_CONFIDENCE)
+
+    assert triage_verdict(below) == VERDICT_NEEDS_REVIEW
+    assert triage_verdict(at) != VERDICT_NEEDS_REVIEW
+
+
+def test_a_confident_no_is_still_filtered_out():
+    """The symmetric bar must not turn every non-recruiter email into review noise."""
+    assert triage_verdict(_fields(is_recruiter=False, confidence=1.0)) == VERDICT_NOT_RECRUITER

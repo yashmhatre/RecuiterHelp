@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -73,6 +73,21 @@ CREATE TABLE IF NOT EXISTS runs (
     status       TEXT    NOT NULL,
     payload      TEXT    NOT NULL,   -- the whole pipeline result, as JSON
     created_at   TEXT    NOT NULL
+);
+
+-- One classification verdict per mailbox message, so the inbox queue pays for a model call
+-- once per email rather than once per page refresh. Keyed on the provider's message id, which
+-- is stable for the life of the message.
+CREATE TABLE IF NOT EXISTS triage (
+    message_id   TEXT    PRIMARY KEY,
+    verdict      TEXT    NOT NULL,   -- recruiter | not_recruiter | needs_review
+    is_recruiter INTEGER NOT NULL,
+    confidence   REAL    NOT NULL,
+    intent       TEXT,
+    role         TEXT,
+    fields       TEXT    NOT NULL,   -- the full extraction, as JSON
+    backend      TEXT,
+    classified_at TEXT   NOT NULL
 );
 """
 
@@ -316,3 +331,66 @@ def get_run(run_id: int, db_path: Path | str | None = None) -> dict | None:
         item = dict(row)
         item["payload"] = json.loads(item["payload"])
         return item
+
+
+# ---------------------------------------------------------------------------
+# Triage cache
+#
+# The inbox queue classifies every message that survives the two free stages, so it can show
+# only genuine recruiter mail. That is a model call per email, and a page refresh must not
+# repeat it: fifteen leads a day is comfortably inside a free tier, fifteen leads re-read on
+# every rerender is not.
+# ---------------------------------------------------------------------------
+
+
+def save_triage(
+    *,
+    message_id: str,
+    verdict: str,
+    fields: dict,
+    backend: str | None = None,
+    db_path: Path | str | None = None,
+) -> None:
+    """Record one classification verdict. Re-classifying a message replaces the old verdict."""
+    with connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO triage (message_id, verdict, is_recruiter, confidence, "
+            "intent, role, fields, backend, classified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                message_id,
+                verdict,
+                1 if fields.get("is_recruiter") else 0,
+                float(fields.get("confidence") or 0.0),
+                fields.get("intent"),
+                fields.get("role"),
+                json.dumps(fields, default=str),
+                backend,
+                now(),
+            ),
+        )
+
+
+def get_triage(message_ids: Sequence[str], db_path: Path | str | None = None) -> dict[str, dict]:
+    """Cached verdicts for these message ids, keyed by id. Missing ids are simply absent."""
+    ids = list(message_ids)
+    if not ids:
+        return {}
+    with connect(db_path) as conn:
+        placeholders = ",".join("?" * len(ids))
+        rows = conn.execute(
+            f"SELECT * FROM triage WHERE message_id IN ({placeholders})", ids
+        ).fetchall()
+    out = {}
+    for row in rows:
+        item = dict(row)
+        item["fields"] = json.loads(item["fields"])
+        item["is_recruiter"] = bool(item["is_recruiter"])
+        out[item["message_id"]] = item
+    return out
+
+
+def clear_triage(db_path: Path | str | None = None) -> int:
+    """Forget every cached verdict, so the next fetch re-classifies. For when the prompt changes."""
+    with connect(db_path) as conn:
+        cursor = conn.execute("DELETE FROM triage")
+        return cursor.rowcount or 0

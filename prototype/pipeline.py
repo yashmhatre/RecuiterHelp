@@ -99,7 +99,11 @@ consulting") is a skill only if the email lists it among the skills.
 
 Set resume_requested true whenever a resume, CV or profile is asked for, in either direction.
 Put any person's name whose resume is being asked for in candidate_names. Lower-case the skills.
-Set confidence to how sure you are of is_recruiter, not of the other fields."""
+Set confidence to how sure you are that your own is_recruiter answer is correct, not to the
+probability that the email is from a recruiter, and not to your certainty about the other
+fields. Answering false and being certain of it is confidence 1.0, not 0.0. Use a low value
+only when you genuinely cannot tell either way, because a low value sends the email to a human
+instead of acting on your answer."""
 
 
 RERANK_SYSTEM = """You rerank candidate profiles against a job requirement for a recruiter.
@@ -225,6 +229,40 @@ def classify(email: RawEmail) -> tuple[dict[str, Any], str, int]:
     # which is how a request for one person turns into a different person's resume.
     fields["requested_persons"] = requested_person_names(body)
     return fields, f"{result.backend}:{result.model}", result.latency_ms
+
+
+#: The three places a classified email can go. `recruiter` is the only one worth a reviewer's
+#: attention first; `needs_review` must stay visible, because every route into it exists
+#: because believing the model there once lost a genuine lead.
+VERDICT_RECRUITER = "recruiter"
+VERDICT_NOT_RECRUITER = "not_recruiter"
+VERDICT_NEEDS_REVIEW = "needs_review"
+
+
+def triage_verdict(fields: dict[str, Any]) -> str:
+    """Which of the three buckets this classification lands in.
+
+    Factored out of ``run`` so the inbox queue and the full pipeline cannot disagree about what
+    counts as a real recruiter email. Two copies of this logic would drift, and the drift would
+    show up as an email the queue hides but the pipeline would have drafted a reply to.
+    """
+    # The bar applies to both answers. An unconfident "no" used to be filtered out while an
+    # unconfident "yes" was held, which made no sense once the queue started hiding
+    # non-recruiter mail: "not sure this is a recruiter" became an email nobody ever saw. The
+    # prompt asks for confidence in the answer itself, either way, so read it either way.
+    #
+    # Measured on the connected mailbox before changing this: of 60 messages, 5 reached the
+    # classifier, and the "no" answers came back at 1.00 (a bank notice) and 0.10 (a forwarded
+    # job-board blast). Confident refusals score high, so holding the unconfident ones moves a
+    # trickle into review rather than a flood. Small sample -- worth re-measuring once the
+    # agency mailbox is connected.
+    if fields.get("model_uncertain"):
+        # Confidence of exactly 0.0 with no answer is a schema failure, not a confident "no".
+        return VERDICT_NEEDS_REVIEW
+    if fields["confidence"] < MIN_CONFIDENCE:
+        # Includes every contradiction, which is capped at 0.5 above.
+        return VERDICT_NEEDS_REVIEW
+    return VERDICT_NOT_RECRUITER if not fields["is_recruiter"] else VERDICT_RECRUITER
 
 
 def _skill_list(value: Any) -> list[str]:
@@ -851,23 +889,20 @@ def run_pipeline(email: RawEmail, profiles: list[dict]) -> PipelineResult:
             fields,
         )
     )
-    if not fields["is_recruiter"]:
-        if fields.get("model_uncertain"):
-            # Confidence of exactly 0.0 is the schema-failure fallback, not a confident "no".
-            # Dropping it would be indistinguishable from the email never arriving.
-            result.stages.append(
-                Stage(
-                    "Model check", False,
-                    "The model returned no usable answer. Routed to Needs review rather than "
-                    "discarded.", {},
-                )
+    verdict = triage_verdict(fields)
+    if verdict == VERDICT_NEEDS_REVIEW and fields.get("model_uncertain"):
+        # Dropping this would be indistinguishable from the email never arriving.
+        result.stages.append(
+            Stage(
+                "Model check", False,
+                "The model returned no usable answer. Routed to Needs review rather than "
+                "discarded.", {},
             )
-            result.status = "needs_review"
-            result.label = LABEL_REVIEW
-            return result
+        )
+    if verdict == VERDICT_NOT_RECRUITER:
         result.status = "not_recruiter"
         return result
-    if not confident:
+    if verdict == VERDICT_NEEDS_REVIEW:
         result.status = "needs_review"
         result.label = LABEL_REVIEW
         return result

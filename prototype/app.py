@@ -445,11 +445,22 @@ def api_gmail_disconnect() -> JSONResponse:
 
 
 @app.get("/api/gmail/messages")
-def api_gmail_messages(limit: int = 15, query: str = "in:inbox -category:promotions") -> JSONResponse:
+def api_gmail_messages(
+    limit: int = 15,
+    query: str = "in:inbox -category:promotions",
+    classify: bool = False,
+) -> JSONResponse:
     """Recent messages, with the pre-filter and verification verdicts already attached.
 
     Those two stages are free -- no model call -- so running them here lets the list show at a
     glance which messages would even reach a model.
+
+    With ``classify=true`` each surviving message is also classified, so the caller can show
+    only genuine recruiter mail. That costs one model call per message the first time it is
+    seen; verdicts are cached in the ``triage`` table and reused on every later fetch, so
+    refreshing the page is free. Messages the pre-filter or verification already rejected are
+    never classified -- paying for a verdict on a newsletter is exactly what those stages exist
+    to avoid.
     """
     try:
         emails = gmail_client.fetch_recent(limit=limit, query=query)
@@ -463,27 +474,72 @@ def api_gmail_messages(limit: int = 15, query: str = "in:inbox -category:promoti
     from pipeline.verify import verify
 
     rows = []
+    screenable = []
     for email in emails:
         pre = prefilter(email)
         ver = verify(email)
-        rows.append(
-            {
-                "id": email.provider_message_id,
-                "thread_id": email.thread_id,
-                "from_name": email.from_name,
-                "from_email": email.from_email,
-                "subject": email.subject,
-                "received_at": email.received_at.isoformat(),
-                "snippet": " ".join(email.body_text.split())[:180],
-                "prefilter_keep": pre.keep,
-                "prefilter_rule": pre.rule,
-                "auth": ver.result.value,
-                "auth_reason": ver.reason,
-                "auth_flags": list(ver.flags),
-                "would_reach_model": pre.keep and ver.result is AuthResult.PASS,
-            }
+        reaches_model = pre.keep and ver.result is AuthResult.PASS
+        row = {
+            "id": email.provider_message_id,
+            "thread_id": email.thread_id,
+            "from_name": email.from_name,
+            "from_email": email.from_email,
+            "subject": email.subject,
+            "received_at": email.received_at.isoformat(),
+            "snippet": " ".join(email.body_text.split())[:180],
+            "prefilter_keep": pre.keep,
+            "prefilter_rule": pre.rule,
+            "auth": ver.result.value,
+            "auth_reason": ver.reason,
+            "auth_flags": list(ver.flags),
+            "would_reach_model": reaches_model,
+            # Set only when classify=true. `None` means "not classified", which is a different
+            # thing from "classified as not a recruiter" and must stay distinguishable.
+            "verdict": None,
+            "classification": None,
+            "classified_now": False,
+        }
+        rows.append(row)
+        if reaches_model:
+            screenable.append((row, email))
+
+    if classify and screenable:
+        _attach_classifications(screenable)
+
+    return JSONResponse({"messages": rows, "classified": classify})
+
+
+def _attach_classifications(screenable: list[tuple[dict, object]]) -> None:
+    """Classify each message that survived the free stages, reusing cached verdicts.
+
+    Failures are deliberately not fatal. One message whose classification errors leaves its
+    verdict as ``None`` and the rest of the queue intact; the caller shows it as unclassified,
+    which is honest, rather than the whole fetch failing because of one bad email.
+    """
+    from prototype import store
+    from prototype.pipeline import classify as classify_email
+    from prototype.pipeline import triage_verdict
+
+    cached = store.get_triage([row["id"] for row, _ in screenable])
+
+    for row, email in screenable:
+        hit = cached.get(row["id"])
+        if hit:
+            row["verdict"] = hit["verdict"]
+            row["classification"] = hit["fields"]
+            continue
+        try:
+            fields, backend, _latency = classify_email(email)
+        except Exception as exc:  # noqa: BLE001 -- one bad email must not sink the queue
+            row["classification"] = {"error": str(exc)[:160]}
+            continue
+        verdict = triage_verdict(fields)
+        row["verdict"] = verdict
+        row["classification"] = fields
+        row["classified_now"] = True
+        store.save_triage(
+            message_id=row["id"], verdict=verdict, fields=fields, backend=backend
         )
-    return JSONResponse({"messages": rows})
 
 
 @app.post("/api/gmail/run")
