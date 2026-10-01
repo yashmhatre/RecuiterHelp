@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS triage (
     role         TEXT,
     fields       TEXT    NOT NULL,   -- the full extraction, as JSON
     backend      TEXT,
+    prompt_version TEXT,             -- CLASSIFY_VERSION the verdict was made under
     classified_at TEXT   NOT NULL
 );
 """
@@ -144,6 +145,7 @@ def connect(db_path: Path | str | None = None) -> Iterator[sqlite3.Connection]:
 #: database anyone is actually using.
 _ADDED_COLUMNS = (
     ("candidates", "seniority", "TEXT"),
+    ("triage", "prompt_version", "TEXT"),
 )
 
 
@@ -349,13 +351,15 @@ def save_triage(
     verdict: str,
     fields: dict,
     backend: str | None = None,
+    prompt_version: str | None = None,
     db_path: Path | str | None = None,
 ) -> None:
     """Record one classification verdict. Re-classifying a message replaces the old verdict."""
     with connect(db_path) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO triage (message_id, verdict, is_recruiter, confidence, "
-            "intent, role, fields, backend, classified_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "intent, role, fields, backend, prompt_version, classified_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message_id,
                 verdict,
@@ -365,21 +369,32 @@ def save_triage(
                 fields.get("role"),
                 json.dumps(fields, default=str),
                 backend,
+                prompt_version,
                 now(),
             ),
         )
 
 
-def get_triage(message_ids: Sequence[str], db_path: Path | str | None = None) -> dict[str, dict]:
-    """Cached verdicts for these message ids, keyed by id. Missing ids are simply absent."""
+def get_triage(
+    message_ids: Sequence[str],
+    prompt_version: str | None = None,
+    db_path: Path | str | None = None,
+) -> dict[str, dict]:
+    """Cached verdicts for these message ids, keyed by id. Missing ids are simply absent.
+
+    With ``prompt_version``, a verdict made under a different prompt counts as missing: the
+    caller re-classifies it, and saving the new verdict replaces the stale row.
+    """
     ids = list(message_ids)
     if not ids:
         return {}
+    sql = f"SELECT * FROM triage WHERE message_id IN ({','.join('?' * len(ids))})"
+    params: list = ids
+    if prompt_version is not None:
+        sql += " AND prompt_version = ?"
+        params = [*ids, prompt_version]
     with connect(db_path) as conn:
-        placeholders = ",".join("?" * len(ids))
-        rows = conn.execute(
-            f"SELECT * FROM triage WHERE message_id IN ({placeholders})", ids
-        ).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     out = {}
     for row in rows:
         item = dict(row)

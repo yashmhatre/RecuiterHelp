@@ -35,7 +35,14 @@ from fastapi.staticfiles import StaticFiles
 
 from email_agent.config import load_dotenv_if_present
 from prototype import gmail_client, llm, store
-from prototype.pipeline import classify, email_from_form, match_profiles, run_pipeline
+from prototype.pipeline import (
+    CLASSIFY_VERSION,
+    classify,
+    email_from_form,
+    match_profiles,
+    run_pipeline,
+    triage_verdict,
+)
 from prototype.resume_text import extract_profile_hints, parse_resume
 
 load_dotenv_if_present()
@@ -516,30 +523,51 @@ def _attach_classifications(screenable: list[tuple[dict, object]]) -> None:
     verdict as ``None`` and the rest of the queue intact; the caller shows it as unclassified,
     which is honest, rather than the whole fetch failing because of one bad email.
     """
-    from prototype import store
-    from prototype.pipeline import classify as classify_email
-    from prototype.pipeline import triage_verdict
-
-    cached = store.get_triage([row["id"] for row, _ in screenable])
+    cached = store.get_triage([row["id"] for row, _ in screenable], CLASSIFY_VERSION)
 
     for row, email in screenable:
         hit = cached.get(row["id"])
         if hit:
-            row["verdict"] = hit["verdict"]
+            # Re-derived rather than read back, so moving MIN_CONFIDENCE re-buckets cached
+            # messages without another model call.
+            row["verdict"] = triage_verdict(hit["fields"])
             row["classification"] = hit["fields"]
             continue
         try:
-            fields, backend, _latency = classify_email(email)
+            fields, _backend, _latency = _classify_and_store(email)
         except Exception as exc:  # noqa: BLE001 -- one bad email must not sink the queue
             row["classification"] = {"error": str(exc)[:160]}
             continue
-        verdict = triage_verdict(fields)
-        row["verdict"] = verdict
+        row["verdict"] = triage_verdict(fields)
         row["classification"] = fields
         row["classified_now"] = True
-        store.save_triage(
-            message_id=row["id"], verdict=verdict, fields=fields, backend=backend
-        )
+
+
+def _classify_and_store(email) -> tuple[dict, str, int]:
+    """Classify with the model and record the verdict, so no later view pays for it again."""
+    fields, backend, latency = classify(email)
+    store.save_triage(
+        message_id=email.provider_message_id,
+        verdict=triage_verdict(fields),
+        fields=fields,
+        backend=backend,
+        prompt_version=CLASSIFY_VERSION,
+    )
+    return fields, backend, latency
+
+
+def _cached_classify(email) -> tuple[dict, str, int]:
+    """``classify``, answered from the triage cache when the queue already classified this email.
+
+    Handed to ``run_pipeline`` so that running a message from the inbox does not repeat the
+    model call the queue already paid for. A cache hit reports 0 ms, which is the truth.
+    """
+    hit = store.get_triage([email.provider_message_id], CLASSIFY_VERSION).get(
+        email.provider_message_id
+    )
+    if hit:
+        return hit["fields"], f"{hit['backend']} (cached)", 0
+    return _classify_and_store(email)
 
 
 @app.post("/api/gmail/run")
@@ -551,7 +579,7 @@ def api_gmail_run(message_id: str = Form(...), save: str = Form("no")) -> JSONRe
         raise HTTPException(400, str(exc)) from exc
 
     profiles = store.list_profiles()
-    result = run_pipeline(email, profiles)
+    result = run_pipeline(email, profiles, classifier=_cached_classify)
     payload = result.as_dict()
     payload["source"] = {
         "from": f"{email.from_name} <{email.from_email}>".strip(),
