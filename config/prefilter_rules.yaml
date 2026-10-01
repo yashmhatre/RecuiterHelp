@@ -144,5 +144,11 @@ rules:
       - payments
       - creditcard
       - cardalerts
+      # Seen on a real inbox: simpl.reminders@ (late fee) and retailproducts@ (loan promo)
+      # both survived every other rule.
+      - reminders
+      - reminder
+      - retailproducts
+      - offers-noreply
     addresses: []
     domains: []
