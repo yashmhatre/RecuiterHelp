@@ -1094,6 +1094,72 @@ st.markdown(
         display:flex; align-items:center; justify-content:space-between; padding:10px 0;
         border-bottom:1px solid #ECEEF6;
     }
+    /* ===== Exeliq integration: auth page and form refinements ===== */
+
+    /* Replaces .hero-card on the auth page. No gradient: the accent is spent on the primary
+       action instead, which is the only thing on this page a person came to do. */
+    .auth-intro { margin: 2px 0 22px; }
+    .auth-intro h1 {
+        font-size: 28px; font-weight: 700; color: #24243B;
+        margin: 0 0 6px; letter-spacing: -0.02em; line-height: 1.15;
+    }
+    .auth-intro > p { color: #5A5E73; font-size: 14.5px; margin: 0 0 18px; max-width: 56ch; }
+    .auth-paths { display: flex; gap: 12px; flex-wrap: wrap; }
+    .auth-path {
+        flex: 1 1 260px; background: #FFFFFF; border: 1px solid #E7E9F1;
+        border-radius: 14px; padding: 15px 17px;
+    }
+    /* The left rule carries the one accent, and marks these as the two routes through the
+       product rather than decorating them. */
+    .auth-path { border-left: 3px solid #5B4CF2; }
+    .auth-path-name { font-weight: 650; color: #24243B; font-size: 14.5px; margin-bottom: 3px; }
+    .auth-path-detail { color: #8A8FA3; font-size: 12.8px; line-height: 1.45; }
+
+    /* Form fields were grey-on-grey against a grey canvas, so the boundary between a label and
+       its input was doing no work. White field, visible border, accent only on focus. */
+    .stTextInput input, .stTextArea textarea, .stNumberInput input {
+        background: #FFFFFF !important;
+        border: 1px solid #DDE1EC !important;
+        border-radius: 9px !important;
+        color: #24243B !important;
+    }
+    .stTextInput input:focus, .stTextArea textarea:focus, .stNumberInput input:focus {
+        border-color: #5B4CF2 !important;
+        box-shadow: 0 0 0 3px rgba(91, 76, 242, 0.12) !important;
+    }
+    .stTextInput label, .stTextArea label, .stSelectbox label, .stNumberInput label,
+    .stDateInput label, .stMultiSelect label {
+        font-size: 12.5px !important; font-weight: 600 !important; color: #5A5E73 !important;
+    }
+    div[data-baseweb="select"] > div {
+        background: #FFFFFF !important; border-color: #DDE1EC !important; border-radius: 9px !important;
+    }
+
+    /* Sidebar navigation: twenty undifferentiated radio rows read as a debug menu. Tighten the
+       rhythm and let the selected item carry the accent. */
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label {
+        padding: 3px 0 !important;
+    }
+    section[data-testid="stSidebar"] div[role="radiogroup"] > label p {
+        font-size: 13.5px !important; color: #5A5E73 !important;
+    }
+
+    /* The brand subtitle was tracked-out all-caps, which is a styling default rather than a
+       choice, and it competes with the product name directly above it. */
+    .forge-brand-sub {
+        text-transform: none !important; letter-spacing: 0 !important;
+        font-size: 11.5px !important;
+    }
+
+    /* Primary action: one confident button, matching the brand rather than Streamlit's red. */
+    .stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {
+        background: #5B4CF2 !important; border: none !important;
+        border-radius: 10px !important; font-weight: 600 !important;
+    }
+    .stButton button[kind="primary"]:hover, .stFormSubmitButton button[kind="primary"]:hover {
+        background: #4A3BE0 !important;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
@@ -1109,7 +1175,7 @@ with st.sidebar:
             <div class="forge-brand-badge">F</div>
             <div>
                 <div class="forge-brand-name">FORGE AI&trade;</div>
-                <div class="forge-brand-sub">CAREER ACCELERATION PLATFORM</div>
+                <div class="forge-brand-sub">Career acceleration platform</div>
             </div>
         </div>
         """,
@@ -1175,11 +1241,28 @@ page = st.session_state.active_page
 # PAGE: SIGN UP / LOGIN
 # --------------------------------------------------------------------------
 if page == "auth":
+    # Exeliq integration: the gradient banner that used to sit here said "Welcome to FORGE AI"
+    # and repeated the tagline already in the sidebar. It occupied the most valuable space on
+    # the page and helped nobody decide anything. The one real decision at signup is which kind
+    # of account to open, and the two kinds lead to completely different products, so that is
+    # what goes here instead.
     st.markdown(
         f"""
-        <div class="hero-card">
-            <h1>Welcome to {APP_NAME}&trade;</h1>
-            <p>{APP_TAGLINE}</p>
+        <div class="auth-intro">
+            <h1>Create your {APP_NAME}&trade; account</h1>
+            <p>Two kinds of account, built for different jobs. You can change this later.</p>
+            <div class="auth-paths">
+                <div class="auth-path">
+                    <div class="auth-path-name">Job seeker</div>
+                    <div class="auth-path-detail">Find roles, sharpen your resume, practise
+                    interviews, track applications.</div>
+                </div>
+                <div class="auth-path">
+                    <div class="auth-path-name">Recruitment desk</div>
+                    <div class="auth-path-detail">Screen inbound job leads, match candidates
+                    from your database, draft replies.</div>
+                </div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1189,10 +1272,9 @@ if page == "auth":
 
     # ---------------- SIGN UP ----------------
     with tab_signup:
-        st.markdown('<div class="section-title">Create your FORGE AI account</div>', unsafe_allow_html=True)
         st.caption(
-            "Individuals sign up with a personal email address. Corporate, Institution, Training "
-            "Institute and Staffing Firm accounts must use an official organizational email address."
+            "Individuals sign up with a personal email address. Organizational accounts need a "
+            "work email."
         )
 
         account_type = st.selectbox("Account Type *", ACCOUNT_TYPES, key="signup_account_type")

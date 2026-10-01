@@ -1,0 +1,19 @@
+# Streamlit's default primary colour is #FF4B4B, a coral red. The app's own brand is indigo
+# (#5B4CF2, used in the logo badge, the hero and every accent in its CSS), so every primary
+# button, tab underline and radio dot was rendering in a colour that belongs to no part of the
+# design. Two unrelated accents fighting each other is why the page read as unfinished.
+#
+# One accent, the brand's own.
+
+[theme]
+base = "light"
+primaryColor = "#5B4CF2"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F5F6FA"
+textColor = "#24243B"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
