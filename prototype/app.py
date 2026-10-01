@@ -63,7 +63,7 @@ def _build_stamp() -> str:
     server prints at startup, the browser is on current code.
     """
     digest = hashlib.sha256()
-    for name in ("index.html", "app.js", "gmail.js"):
+    for name in ("index.html", "app.js", "gmail.js", "label.js"):
         path = STATIC_DIR / name
         if path.is_file():
             digest.update(path.read_bytes())
@@ -97,7 +97,7 @@ def index() -> HTMLResponse:
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     # Cache-bust the script the blunt way, so a reload cannot serve yesterday's JavaScript.
     stamp = _build_stamp()
-    for name in ("app.js", "gmail.js"):
+    for name in ("app.js", "gmail.js", "label.js"):
         html = html.replace(f'src="/static/{name}"', f'src="/static/{name}?v={stamp}"')
     return HTMLResponse(html)
 
@@ -570,6 +570,136 @@ def api_gmail_export(
         "staging_path": str(STAGING_PATH),
         "next": "python eval/label_cli.py",
     })
+
+
+# ---------------------------------------------------------------------------
+# Labelling
+# ---------------------------------------------------------------------------
+#
+# The same job as eval/label_cli.py, in the browser. Labelling is 200-300 repetitions and it is
+# the blocking task for every accuracy number, so the difference between a terminal prompt and a
+# keyboard-driven screen is whether it actually gets finished.
+# Both write the same labels.jsonl, so they can be used interchangeably.
+
+
+def _label_paths():
+    from eval.label_cli import LABELS_PATH, STAGING_PATH
+
+    return STAGING_PATH, LABELS_PATH
+
+
+SKIPPED_PATH = store.DATA_DIR / "label_skipped.json"
+
+
+def _skipped_ids() -> set[str]:
+    if SKIPPED_PATH.is_file():
+        try:
+            return set(json.loads(SKIPPED_PATH.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            return set()
+    return set()
+
+
+def _read_jsonl(path) -> list[dict]:
+    rows = []
+    if not path.is_file():
+        return rows
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line:
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    return rows
+
+
+def _label_stats() -> dict:
+    staging_path, labels_path = _label_paths()
+    staged = _read_jsonl(staging_path)
+    labelled = _read_jsonl(labels_path)
+    skipped = _skipped_ids()
+    done_ids = {r.get("id") for r in labelled} | skipped
+
+    intents: dict[str, int] = {}
+    recruiters = 0
+    for r in labelled:
+        if r.get("is_recruiter"):
+            recruiters += 1
+            intents[r.get("intent", "other")] = intents.get(r.get("intent", "other"), 0) + 1
+
+    total = len(labelled)
+    return {
+        "staged": len(staged),
+        "labelled": total,
+        "skipped": len(skipped),
+        "remaining": sum(1 for r in staged if r.get("id") not in done_ids),
+        "recruiter": recruiters,
+        "non_recruiter": total - recruiters,
+        "non_recruiter_share": (total - recruiters) / total if total else 0.0,
+        "intents": intents,
+        # The targets P1-05 sets, so progress against them is visible while labelling rather
+        # than discovered at the end.
+        "target_min": 200,
+        "target_max": 300,
+        "target_non_recruiter_share": 0.25,
+        "missing_intents": sorted(
+            {"new_requirement", "resume_request", "follow_up", "interview", "other"}
+            - set(intents)
+        ),
+    }
+
+
+@app.get("/api/label/next")
+def api_label_next() -> JSONResponse:
+    staging_path, labels_path = _label_paths()
+    done_ids = {r.get("id") for r in _read_jsonl(labels_path)} | _skipped_ids()
+
+    nxt = next((r for r in _read_jsonl(staging_path) if r.get("id") not in done_ids), None)
+    return JSONResponse({"email": nxt, "stats": _label_stats()})
+
+
+@app.post("/api/label/save")
+def api_label_save(record: str = Form(...)) -> JSONResponse:
+    """Append one labelled record. Validated against the same schema the CLI uses."""
+    import jsonschema
+
+    from eval.validate_dataset import load_schema
+
+    try:
+        parsed = json.loads(record)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(400, f"Could not read that record: {exc}") from exc
+
+    errors = list(jsonschema.Draft202012Validator(load_schema()).iter_errors(parsed))
+    if errors:
+        where = ".".join(str(p) for p in errors[0].absolute_path) or "(root)"
+        raise HTTPException(400, f"{where}: {errors[0].message}")
+
+    _, labels_path = _label_paths()
+    labels_path.parent.mkdir(parents=True, exist_ok=True)
+    if parsed["id"] in {r.get("id") for r in _read_jsonl(labels_path)}:
+        raise HTTPException(400, "That email is already labelled.")
+
+    with open(labels_path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(parsed, ensure_ascii=False) + chr(10))
+
+    return JSONResponse({"ok": True, "stats": _label_stats()})
+
+
+@app.post("/api/label/skip")
+def api_label_skip(email_id: str = Form(...)) -> JSONResponse:
+    skipped = _skipped_ids()
+    skipped.add(email_id)
+    SKIPPED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SKIPPED_PATH.write_text(json.dumps(sorted(skipped)), encoding="utf-8")
+    return JSONResponse({"ok": True, "stats": _label_stats()})
+
+
+@app.get("/api/label/stats")
+def api_label_stats() -> JSONResponse:
+    return JSONResponse(_label_stats())
 
 
 @app.get("/api/status")
