@@ -55,3 +55,7 @@ Forge_AI/
 # FORGE AI Streamlit app data: real accounts, hashed passwords, uploaded resumes and photos.
 forge_app/forge_ai_data/
 .venv-forge/
+
+# Agent skills: the real files live in .agents/skills and are committed.
+# .claude/skills holds machine-specific absolute symlinks into it, so it is not.
+.claude/skills/
