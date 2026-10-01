@@ -77,6 +77,8 @@ addopts = "-q --strict-markers"
 [tool.ruff]
 line-length = 110
 target-version = "py311"
+# Client reference material. Read-only: we never lint, format or edit it.
+extend-exclude = ["Forge_AI"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

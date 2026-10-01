@@ -672,7 +672,10 @@ def test_a_candidate_holding_the_must_haves_is_put_forward(resume_file):
     matches = match_profiles(tiered_fields(), [strong])
 
     assert [m["name"] for m in matches] == ["Yash Mhatre"]
-    assert matches[0]["score"] >= 0.6
+    # FORGE Match scale, 0-100. A candidate holding every must-have should reach "good" (70+),
+    # not merely clear the submission floor of 40.
+    assert matches[0]["score"] >= 70, matches[0]
+    assert matches[0]["signal"] in {"good", "strong"}
 
 
 def test_the_reason_names_the_missing_must_haves(resume_file):

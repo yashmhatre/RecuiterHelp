@@ -29,9 +29,11 @@ from email_agent.contracts import AuthResult, RawEmail
 from pipeline.prefilter import prefilter
 from pipeline.verify import verify
 from prototype import llm
+from prototype.forge_match import MIN_SUBMIT_SCORE, band_for, score_candidate
 
 MAX_PROFILES = 3
-MIN_SCORE = 0.30
+#: FORGE Match scale, 0-100. The specification's own cut: below 40 is "Do not submit".
+MIN_SCORE = MIN_SUBMIT_SCORE
 MIN_CONFIDENCE = 0.55
 #: Share of a requirement's must-have skills a profile needs before it may be put forward at all.
 #: Recruiters state this explicitly -- "ensure the candidates have strong hands-on experience
@@ -385,65 +387,42 @@ def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
         skills = {s.lower() for s in profile.get("skills") or []}
         haystack = f"{profile['title']} {profile['summary']}".lower()
 
+        # The must-have gate stays in front of FORGE scoring, deliberately. A real client email
+        # said "ensure the candidates have strong hands-on experience with the must-have skills
+        # before sharing the profiles", and the FORGE bands alone would not honour that: the
+        # five non-technical dimensions floor a candidate near 39 even with zero relevant
+        # skills, which lands in "stretch" rather than "poor".
         if must_have:
-            # Tiered requirement. Must-haves dominate, and missing too many is disqualifying
-            # rather than merely low-scoring.
             must_held = _held_skills(must_have, skills, haystack)
-            coverage = len(must_held) / len(must_have)
-            if coverage < MIN_MUST_HAVE_COVERAGE:
+            if len(must_held) / len(must_have) < MIN_MUST_HAVE_COVERAGE:
                 continue
 
-            preferred_held = _held_skills(preferred, skills, haystack)
-            nice_held = _held_skills(nice_to_have, skills, haystack)
-            score = 0.65 * coverage
-            if preferred:
-                score += 0.25 * (len(preferred_held) / len(preferred))
-            if nice_to_have:
-                score += 0.10 * (len(nice_held) / len(nice_to_have))
-            if not preferred and not nice_to_have:
-                score = coverage
+        requirement = {
+            "role_title": fields.get("role"),
+            "seniority": fields.get("seniority"),
+            # FORGE has two skill tiers; we parse three. Fold ours down on the way in.
+            "must_have_skills": sorted(must_have) or sorted(required_skills),
+            "preferred_skills": sorted(preferred | nice_to_have),
+            "certifications": fields.get("certifications") or [],
+            "experience_requirements": {"total_years": min_years},
+        }
+        report = score_candidate(profile, requirement, location_compatible=True)
 
-            missing = sorted(must_have - must_held)
-            reasons.append(
-                f"{len(must_held)}/{len(must_have)} must-have: {', '.join(sorted(must_held))}"
-                + (f" (missing {', '.join(missing)})" if missing else "")
-            )
-            overlap = must_held | preferred_held | nice_held
-        else:
-            overlap = required_skills & skills
-            text_hits = {s for s in required_skills if s in haystack} - overlap
-            if required_skills:
-                score = 0.75 * (len(overlap) / len(required_skills)) + 0.25 * (
-                    len(text_hits) / len(required_skills)
-                )
-            else:
-                score = 0.4
-
-        if min_years is not None and years >= min_years:
-            score += 0.1
-        if fields.get("role") and _role_similarity(fields["role"], profile["title"]) > 0.4:
-            score += 0.15
         if named:
-            score = max(score, 0.75)
+            # A named candidate was asked for by name; they are the answer regardless of score.
+            report.overall_score = max(report.overall_score, MIN_SUBMIT_SCORE + 20)
+            report.signal, _, _ = band_for(report.overall_score)
 
-        # A profile with no resume on file can never be attached, so it must not win a tie
-        # against one that can. Penalised rather than excluded: if it is the only thing that
-        # fits, the draft stage reports it as dropped and the reviewer learns the resume is
-        # missing, which is more useful than silence.
         has_resume = bool(profile.get("file_path")) and Path(str(profile["file_path"])).is_file()
         if not has_resume:
-            score -= 0.15
+            # Cannot be attached, so it must not win a tie against a profile that can.
+            report.overall_score = max(0, report.overall_score - 10)
+            report.signal, _, _ = band_for(report.overall_score)
             reasons.append("no resume on file")
 
-        score = max(0.0, min(1.0, score))
-
-        if overlap and not must_have:
-            reasons.append(f"{len(overlap)}/{len(required_skills)} skills: {', '.join(sorted(overlap))}")
-        reasons.append(f"{years:g} yrs")
-        if profile.get("location"):
-            reasons.append(str(profile["location"]))
-        if profile.get("notice_period_days") is not None:
-            reasons.append(f"{profile['notice_period_days']}-day notice")
+        reasons.append(report.dimension_detail[0].note)
+        if report.bridge_strategy and "Meets every" not in report.bridge_strategy:
+            reasons.append(report.bridge_strategy)
 
         scored.append(
             {
@@ -451,10 +430,17 @@ def match_profiles(fields: dict[str, Any], profiles: list[dict]) -> list[dict]:
                 "candidate_id": profile["candidate_id"],
                 "name": profile["name"],
                 "title": profile["title"],
-                "score": round(score, 3),
+                # 0-100 on the FORGE scale now, not 0-1.
+                "score": report.overall_score,
+                "signal": report.signal,
                 "reason": "; ".join(reasons),
-                "stage": "overlap",
+                "stage": "forge_match",
                 "has_resume": has_resume,
+                "forge": report.as_dict(),
+                "dimensions": [
+                    {"name": d.name, "score": d.score, "max": d.maximum, "note": d.note}
+                    for d in report.dimension_detail
+                ],
             }
         )
 
@@ -532,13 +518,13 @@ def _model_rerank(fields: dict[str, Any], pool: list[dict], profiles: list[dict]
         if profile_id not in allowed:
             continue  # a hallucinated id is discarded, never trusted
         original = next(m for m in pool if m["profile_id"] == profile_id)
-        score = _clamp(entry.get("score"))
-        if not original.get("has_resume", False):
-            score = max(0.0, score - 0.15)  # same penalty as the overlap stage
+        # The re-ranker returns 0-1. FORGE Match is 0-100 and is computed from the dimension
+        # rubric, so the model's number is used only to reorder, never to replace the score --
+        # a rubric that can be overwritten by a model is not a rubric.
         merged.append(
             {
                 **original,
-                "score": round(score, 3),
+                "rerank_score": round(_clamp(entry.get("score")), 3),
                 "reason": str(entry.get("reason") or original["reason"])[:200],
                 "stage": "rerank",
             }
@@ -766,6 +752,12 @@ def validate_draft(draft: dict[str, Any], email: RawEmail, profiles: list[dict])
 # ---------------------------------------------------------------------------
 
 
+def _match_summary(matches: list[dict]) -> str:
+    """One line a reviewer can read: who matched, at what FORGE score, in which band."""
+    parts = [f"{m['name']} {m['score']}/100 {m.get('signal', '')}".strip() for m in matches]
+    return f"{len(matches)} profile(s) at or above {MIN_SCORE}/100: " + "; ".join(parts)
+
+
 def run_pipeline(email: RawEmail, profiles: list[dict]) -> PipelineResult:
     """The routing table from P2-12, in miniature. Order matters: verify before any model call."""
     result = PipelineResult(status="fetched", label=None, backend=llm.backend_name())
@@ -851,9 +843,9 @@ def run_pipeline(email: RawEmail, profiles: list[dict]) -> PipelineResult:
         Stage(
             "Match profiles",
             bool(matches),
-            f"{len(matches)} profile(s) at or above {MIN_SCORE:.2f}"
+            _match_summary(matches)
             if matches
-            else f"No profile scored {MIN_SCORE:.2f} or higher",
+            else f"No profile reached {MIN_SCORE}/100 (FORGE Match floor for submission)",
             {"considered": len(profiles)},
         )
     )

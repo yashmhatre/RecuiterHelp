@@ -48,3 +48,6 @@ Thumbs.db
 
 # Prototype: SQLite database and uploaded resumes are real candidate data.
 prototype/data/
+
+# Client reference material, supplied by Exeliq. Read-only: never edited, linted or committed.
+Forge_AI/
