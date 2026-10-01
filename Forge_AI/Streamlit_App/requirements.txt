@@ -1,0 +1,4 @@
+# Streamlit Community Cloud installs this file when it is next to app.py, instead of the
+# repo-root requirements.txt, which installs the whole recruiter pipeline. This app needs
+# only Streamlit (see README.md).
+streamlit>=1.40

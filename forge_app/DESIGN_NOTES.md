@@ -74,6 +74,42 @@ as per-page subtitles, which is where a product name belongs.
 printed in the sidebar, occupying the most valuable space on the page while helping nobody decide
 anything. Replaced with the one decision that matters at signup: job seeker or recruitment desk.
 
+## Dashboard redesign (approved mockup)
+
+The client supplied a finished dashboard mockup, and it supersedes two of the choices above. A
+concrete approved design is a stronger brief than the skill's generic recommendation, so where
+they disagree the mockup wins and the skill supplies the checklist.
+
+**Changed from the flat pass**
+
+- **Dark navy sidebar** with the selected page as a filled indigo row. The white sidebar against a
+  near-white canvas gave navigation and work no boundary.
+- **Soft shadows and tinted surfaces are back**, but on a system: one card radius (18px), one
+  shadow, and one tint per stat family (indigo, green, violet, amber, blue).
+- **Plus Jakarta Sans replaces Fira Sans / Fira Code.** It is the mockup's typeface and has
+  tabular figures, so numbers still align without a monospace face.
+
+**Still from `ui-ux-pro-max`** (re-queried as `"career platform SaaS dashboard job seeker"`; it
+returned the same Flat / blue / Funnel answer as before, rejected for the same reasons)
+
+- SVG icons, never emoji, for anything acting as an icon: Lucide inline SVG on the dashboard,
+  Streamlit's bundled Material Symbols in the sidebar. The wave in the greeting is content.
+- Every text colour measured at 4.5:1 or better on the surface it sits on, including the tints.
+- Visible focus rings, 44px sidebar targets, `prefers-reduced-motion` honoured.
+- Checked at 1760, 1440 and 400px wide.
+
+**Where the code lives.** Markup helpers are in `forge/ui.py` as pure functions (tested in
+`tests/test_forge_ui.py`); sidebar icons are `navigation.ICONS`; styles are the `fx-*` block at
+the end of the global stylesheet in `app.py`. Cards are Streamlit containers whose key starts
+with `fxcard`, which is how CSS reaches a container that holds real widgets.
+
+**Not carried over from the mockup**
+
+- *Upgrade to Pro.* There is no paid tier, and a button that leads nowhere is worse than none.
+- *Week-on-week deltas on the readiness score and conversion rate.* Nothing records history, so
+  those would be invented numbers. The figures shown come from the same state as before.
+- *"This month" filter on the funnel.* Applications carry no dates to filter by.
+
 ## Our footprint in `app.py`
 
 Marked with `Exeliq integration` comments throughout. The Email Agent page itself lives in

@@ -137,6 +137,39 @@ DESK_NAV: tuple[NavGroup, ...] = (
 )
 
 
+#: Material Symbols names for each page, used as ``:material/<name>:`` on the sidebar buttons.
+#: Kept beside the entries rather than inside them so the information architecture above stays
+#: readable as a list of tasks. Streamlit bundles this icon font, so there is nothing to load.
+ICONS: dict[str, str] = {
+    "auth": "login",
+    "profile": "person",
+    "welcome": "redeem",
+    "dashboard": "space_dashboard",
+    "email_agent": "inbox",
+    "job_hunter": "work",
+    "jd_intelligence": "manage_search",
+    "candidate_matching": "assignment",
+    "resume_intelligence": "description",
+    "gap_analysis": "insights",
+    "learning_dev": "school",
+    "simulation": "record_voice_over",
+    "performance_eval": "monitoring",
+    "human_authenticity": "fingerprint",
+    "linkedin_branding": "campaign",
+    "outreach": "send",
+    "success_tracking": "trending_up",
+    "career_intelligence": "public",
+    "videos": "play_circle",
+    "faqs": "help",
+    "settings": "settings",
+}
+
+
+def icon_for(key: str) -> str:
+    """The sidebar icon for a page, as Streamlit's material shortcode."""
+    return f":material/{ICONS.get(key, 'chevron_right')}:"
+
+
 def nav_for(is_recruiter: bool) -> tuple[NavGroup, ...]:
     return DESK_NAV if is_recruiter else SEEKER_NAV
 
