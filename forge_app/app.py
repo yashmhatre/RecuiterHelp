@@ -56,6 +56,9 @@ FREE_EMAIL_DOMAINS = {
 ACCOUNT_TYPES = [
     "Individual / Job Seeker", "Corporate", "Institution / University",
     "Training Institute", "Staffing Firm",
+    # Exeliq integration: an explicit desk account. Recruiter capability previously depended on
+    # picking the right role inside a Corporate account, which nobody would discover.
+    "HR / Recruitment Desk",
 ]
 
 DEPARTMENTS = [
@@ -91,6 +94,11 @@ ROLES_BY_ACCOUNT_TYPE = {
     "Staffing Firm": [
         "Talent Acquisition Lead", "Recruiter", "Account Manager",
         "Delivery Manager", "Branch Manager", "Business Development Manager", "Other",
+    ],
+    # Exeliq integration
+    "HR / Recruitment Desk": [
+        "Recruiter", "HR Manager", "Talent Acquisition Lead", "Recruitment Admin",
+        "Delivery Manager", "Account Manager", "Other",
     ],
 }
 
@@ -134,7 +142,8 @@ REFERRAL_SOURCES = [
 #: Roles that run a desk: they receive requirements and supply candidates. The Email Agent is
 #: for these people. A job seeker has no inbound recruiter mailbox to screen.
 RECRUITER_ROLES = {
-    "HR Manager", "Talent Acquisition Lead", "Recruiter", "Account Manager",
+    "HR Manager", "Talent Acquisition Lead", "Recruiter", "Recruitment Admin",
+    "Account Manager",
     "Delivery Manager", "Branch Manager", "Placement Coordinator", "Career Services Officer",
 }
 
@@ -158,7 +167,7 @@ def is_recruiter_account(prof: dict) -> bool:
     Checked three ways because people fill forms inconsistently: an explicit account type, the
     role they picked, or the department. Any one is enough.
     """
-    if prof.get("account_type") == "Staffing Firm":
+    if prof.get("account_type") in ("HR / Recruitment Desk", "Staffing Firm"):
         return True
     if prof.get("role") in RECRUITER_ROLES:
         return True
@@ -1215,8 +1224,9 @@ if page == "auth":
                 errors.append("Please enter a valid email address.")
             elif account_type != "Individual / Job Seeker" and not is_company_email(email):
                 errors.append(
-                    "Corporate, Institution, Training Institute and Staffing Firm accounts must use an "
-                    "official organizational email address (not a personal email provider)."
+                    "Organizational accounts must use an official work email address, not a "
+                    "personal one. You can also sign up as an individual and switch the account "
+                    "type later in Profile Setup."
                 )
             if len(password) < 8:
                 errors.append("Password must be at least 8 characters long.")
@@ -1307,6 +1317,20 @@ elif page == "profile":
         c1, c2 = st.columns(2)
         with c1:
             name = st.text_input("Individual / Employee Name *", value=st.session_state.profile.get("name", ""))
+            # Exeliq integration: account type is editable here. It was fixed at signup, so
+            # switching between a job-seeker view and a recruitment desk meant creating a whole
+            # new account -- which is also how someone who picked wrong got stuck.
+            account_type = st.selectbox(
+                "Account Type *",
+                ACCOUNT_TYPES,
+                index=ACCOUNT_TYPES.index(account_type) if account_type in ACCOUNT_TYPES else 0,
+                help="A recruitment desk sees the Email Agent. A job seeker sees the career tools.",
+            )
+            st.session_state.profile["account_type"] = account_type
+            role_options = ROLES_BY_ACCOUNT_TYPE.get(
+                account_type, ROLES_BY_ACCOUNT_TYPE["Individual / Job Seeker"]
+            )
+
             role = st.selectbox(
                 "Role / Designation *",
                 role_options,
