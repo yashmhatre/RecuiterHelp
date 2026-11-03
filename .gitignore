@@ -54,6 +54,7 @@ prototype/data/
 
 # FORGE AI Streamlit app data: real accounts, hashed passwords, uploaded resumes and photos.
 forge_app/forge_ai_data/
+Forge_AI/Streamlit_App/forge_ai_data/
 .venv-forge/
 
 # Agent skills: the real files live in .agents/skills and are committed.

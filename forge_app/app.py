@@ -19,7 +19,7 @@ import streamlit as st
 
 # Exeliq integration: the inbound Email Agent page lives in its own module.
 import exeliq_email_agent
-from forge import navigation
+from forge import navigation, ui
 
 # --------------------------------------------------------------------------
 # PAGE CONFIG
@@ -218,6 +218,7 @@ def init_state():
         "applied_jobs": {},      # job_id -> status ("Applied", "Interview", "Offer")
         "job_alerts": [],
         "selected_job_id": None,
+        "job_query": "",          # set by the top-bar search, read by the jobs page
         "jd_analysis_result": None,
         "mock_candidates": None,
         "enrolled_courses": set(),
@@ -977,10 +978,10 @@ def get_career_recommendation():
 st.markdown(
     """
     <style>
-    /* Exeliq integration: typography. The skill's pairing for dashboards and admin panels,
-       and the app previously specified no typeface at all. Fira Sans for interface text,
-       Fira Code where figures need to line up. */
-    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+    /* Exeliq integration: typography. Plus Jakarta Sans, the geometric sans of the approved
+       dashboard design. It has tabular figures, so numbers that get compared still line up
+       without switching to a monospace face. */
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
     /* Scoped deliberately. An earlier version matched [class*="st-"] with !important, which
        also hit Streamlit's Material Icons elements: the chevron on an expander renders its
@@ -988,7 +989,7 @@ st.markdown(
        "arrow_down" on top of the label. Icon fonts are excluded and then restored below. */
     html, body, .stApp, p, span, div, label, li, td, th,
     button, input, textarea, select, h1, h2, h3, h4, h5, h6 {
-        font-family: 'Fira Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
+        font-family: 'Plus Jakarta Sans', -apple-system, 'Segoe UI', Roboto, sans-serif;
     }
     /* Streamlit's icons must keep their own font or they render as words. */
     [data-testid="stIconMaterial"], .material-icons, .material-icons-outlined,
@@ -997,31 +998,36 @@ st.markdown(
         font-family: 'Material Symbols Rounded', 'Material Icons' !important;
     }
     /* Figures that get compared sit in tabular monospace so columns align. */
-    .metric-value, .forge-figure { font-family: 'Fira Code', ui-monospace, monospace !important;
-                                   font-variant-numeric: tabular-nums; }
+    .metric-value, .forge-figure, .fx-stat-value, .fx-num {
+        font-variant-numeric: tabular-nums; }
 
     /* Flat: a single transition speed, in the skill's 150-200ms band. */
     button, a, .stButton button, .auth-path { transition: all 170ms ease !important; }
     .stButton button, .stFormSubmitButton button { cursor: pointer !important; }
 
-    .stApp { background-color: #F5F6FA; }
+    .stApp { background-color: #F6F7FB; }
+    /* Dark navy rail, as in the approved design: it separates navigation from work at a
+       glance, which a white sidebar against a near-white canvas did not. */
     section[data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 1px solid #E7E9F1;
+        background: linear-gradient(180deg, #14154A 0%, #0E0F33 100%);
+        border-right: none;
     }
+    section[data-testid="stSidebar"] * { color: #D9DBF2; }
     .forge-brand {
-        display: flex; align-items: center; gap: 10px;
-        padding: 6px 2px 18px 2px; border-bottom: 1px solid #EEF0F7;
-        margin-bottom: 14px;
+        display: flex; align-items: center; gap: 12px;
+        padding: 4px 2px 20px 2px; margin-bottom: 6px;
     }
     .forge-brand-badge {
-        width: 38px; height: 38px; border-radius: 10px;
-        background: #5B4CF2;  /* flat: gradient removed */
+        width: 42px; height: 42px; border-radius: 12px; flex: none;
+        background: linear-gradient(135deg, #7B6CFF 0%, #5B4CF2 55%, #4433D6 100%);
         display: flex; align-items: center; justify-content: center;
-        color: white; font-weight: 700; font-size: 17px;
+        box-shadow: 0 6px 16px rgba(91, 76, 242, 0.45);
     }
-    .forge-brand-name { font-size: 17px; font-weight: 700; color: #24243B; line-height:1.1;}
-    .forge-brand-sub { font-size: 10px; color: #6E748C; letter-spacing: 0.04em; }
+    section[data-testid="stSidebar"] .forge-brand-name {
+        font-size: 21px; font-weight: 800; color: #FFFFFF; line-height: 1.05;
+        letter-spacing: -0.01em;
+    }
+    section[data-testid="stSidebar"] .forge-brand-sub { font-size: 11.5px; color: #B9BCE0; }
     .hero-card {
         background: linear-gradient(135deg, #5B4CF2 0%, #7C6BFA 60%, #9C8CFF 100%);
         border-radius: 16px; padding: 26px 30px; color: white; margin-bottom: 18px;
@@ -1166,34 +1172,42 @@ st.markdown(
     /* Sidebar navigation. Twenty undifferentiated rows read as a debug menu, so the list is
        now grouped by what the person is doing and each row is a button: the selected one can
        then carry the accent, which a radio dot cannot do legibly at this density. */
-    .nav-group {
-        font-size: 10.5px; font-weight: 700; color: #6E7690;
-        letter-spacing: 0.06em; text-transform: uppercase;
-        margin: 16px 0 5px 4px;
+    /* #9396C4 on the navy rail is 6.1:1, so the group labels stay quiet without failing. */
+    section[data-testid="stSidebar"] .nav-group {
+        font-size: 10.5px; font-weight: 700; color: #9396C4;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        margin: 20px 0 8px 12px; padding-bottom: 2px;
     }
+    section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.2rem; }
     section[data-testid="stSidebar"] .stButton button {
-        text-align: left !important; justify-content: flex-start !important;
-        padding: 5px 10px !important; min-height: 0 !important;
-        font-size: 13.5px !important; font-weight: 500 !important;
+        justify-content: flex-start !important; text-align: left !important;
+        padding: 9px 14px !important; min-height: 44px !important;
+        font-size: 14.5px !important; font-weight: 500 !important;
         border: none !important; background: transparent !important;
-        color: #5A5E73 !important; border-radius: 8px !important;
+        border-radius: 10px !important; gap: 12px !important;
     }
+    section[data-testid="stSidebar"] .stButton button,
+    section[data-testid="stSidebar"] .stButton button * { color: #D9DBF2 !important; }
+    section[data-testid="stSidebar"] .stButton button > div { justify-content: flex-start !important; }
+    section[data-testid="stSidebar"] .stButton button p { text-align: left !important; }
     section[data-testid="stSidebar"] .stButton button:hover {
-        background: #F2F3F9 !important; color: #24243B !important;
+        background: rgba(255, 255, 255, 0.07) !important;
     }
+    section[data-testid="stSidebar"] .stButton button:hover * { color: #FFFFFF !important; }
     section[data-testid="stSidebar"] .stButton button[kind="primary"] {
-        background: #EEF0FF !important; color: #5B4CF2 !important; font-weight: 650 !important;
+        background: linear-gradient(90deg, #5B4CF2 0%, #4F3FE6 100%) !important;
+        box-shadow: 0 6px 18px rgba(91, 76, 242, 0.40) !important; font-weight: 650 !important;
     }
-    section[data-testid="stSidebar"] .stButton button:disabled {
-        color: #C7CAD6 !important; background: transparent !important;
+    section[data-testid="stSidebar"] .stButton button[kind="primary"] * { color: #FFFFFF !important; }
+    section[data-testid="stSidebar"] .stButton button:disabled { opacity: 0.4 !important; }
+    section[data-testid="stSidebar"] .stButton button:focus-visible {
+        outline: 2px solid #A79EFF !important; outline-offset: 2px !important;
     }
+    section[data-testid="stSidebar"] hr { border-color: rgba(255, 255, 255, 0.10) !important; }
 
     /* The brand subtitle was tracked-out all-caps, which is a styling default rather than a
        choice, and it competes with the product name directly above it. */
-    .forge-brand-sub {
-        text-transform: none !important; letter-spacing: 0 !important;
-        font-size: 11.5px !important;
-    }
+    .forge-brand-sub { text-transform: none !important; letter-spacing: 0 !important; }
 
     /* Primary action: one confident button, matching the brand rather than Streamlit's red. */
     .stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] {
@@ -1202,6 +1216,173 @@ st.markdown(
     }
     .stButton button[kind="primary"]:hover, .stFormSubmitButton button[kind="primary"]:hover {
         background: #4A3BE0 !important;
+    }
+
+    /* ===== Exeliq integration: dashboard design system (fx-*) =====
+       Tokens: ink #1B1A3A, body #4B4E68, muted #646882 (5.2:1 on white), line #ECEDF4,
+       canvas #F6F7FB, brand #5B4CF2, success #178841. Every text colour here is at least 4.5:1
+       on the surface it sits on, including the tinted stat cards. */
+
+    /* Streamlit's own header (Deploy, the kebab menu) belongs to a developer, not a member. */
+    header[data-testid="stHeader"] { background: transparent; height: 0; }
+    [data-testid="stToolbar"], [data-testid="stDecoration"] { display: none !important; }
+    .block-container { padding-top: 1.4rem !important; max-width: 1480px; }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
+
+    /* Cards: any container given a key starting with fxcard. One radius, one shadow. */
+    [class*="st-key-fxcard"] {
+        background: #FFFFFF; border: 1px solid #ECEDF4; border-radius: 18px;
+        padding: 20px 22px 18px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04),
+        0 8px 24px rgba(16, 24, 40, 0.04); gap: 0.6rem;
+    }
+    [class*="st-key-fxcard-accent"] {
+        background: linear-gradient(160deg, #F4F2FF 0%, #ECE9FF 100%);
+        border-color: #DEDAFF;
+    }
+    .fx-card-title { font-size: 17px; font-weight: 700; color: #1B1A3A; margin: 2px 0 6px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    [class*="st-key-fxcard"] .stButton button[kind="tertiary"] {
+        color: #4B3BE0 !important; font-weight: 600 !important; font-size: 13.5px !important;
+        padding: 0 !important; min-height: 0 !important; white-space: nowrap !important;
+    }
+    [class*="st-key-fxcard"] .stButton button[kind="tertiary"] p { white-space: nowrap; }
+    [class*="st-key-fxcard"] .stButton button[kind="tertiary"]:hover { color: #2F21B8 !important;
+        text-decoration: underline; }
+    [class*="st-key-fxcenter"] { align-items: center; }
+
+    /* Top bar */
+    [class*="st-key-fxtopbar"] {
+        background: #FFFFFF; border: 1px solid #ECEDF4; border-radius: 16px;
+        padding: 10px 16px; margin-bottom: 8px;
+    }
+    [class*="st-key-fxtopbar"] .stTextInput input {
+        background: #F6F7FB !important; border: 1px solid #ECEDF4 !important;
+        border-radius: 12px !important; padding-left: 14px !important; height: 44px;
+    }
+    [class*="st-key-fxtopbar"] .stButton button, [class*="st-key-fxtopbar"] [data-testid="stPopover"] button {
+        border: none !important; background: transparent !important; min-height: 44px;
+        color: #4B4E68 !important; border-radius: 12px !important;
+    }
+    [class*="st-key-fxtopbar"] .stButton button:hover,
+    [class*="st-key-fxtopbar"] [data-testid="stPopover"] button:hover { background: #F2F2F8 !important; }
+    .fx-me { display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
+    .fx-me-name { font-weight: 700; color: #1B1A3A; font-size: 15px; line-height: 1.2; }
+    .fx-me-role { color: #646882; font-size: 13px; }
+    .fx-avatar {
+        border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+        background: linear-gradient(135deg, #7B6CFF, #5B4CF2); color: #FFFFFF;
+        font-weight: 700; font-size: 14px; box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 4px #E6E3FF;
+    }
+
+    /* Welcome row */
+    .fx-welcome h1 { font-size: 30px; font-weight: 800; color: #1B1A3A; margin: 0;
+        letter-spacing: -0.02em; padding: 0; }
+    .fx-welcome p { color: #4B4E68; font-size: 15.5px; margin: 4px 0 0; }
+    .fx-readiness { display: flex; align-items: center; justify-content: flex-end; gap: 16px; }
+    .fx-readiness-label { font-weight: 700; color: #1B1A3A; font-size: 15px; white-space: nowrap; }
+    .fx-readiness-state { font-size: 20px; font-weight: 700; color: #178841; }
+    .fx-readiness-hint { font-size: 12.5px; color: #646882; }
+
+    /* Stat cards */
+    .fx-stat { display: flex; gap: 12px; align-items: flex-start; border-radius: 18px;
+        padding: 18px 16px 16px; min-height: 128px; border: 1px solid rgba(20, 20, 60, 0.04); }
+    .fx-stat-body { min-width: 0; }
+    .fx-stat-label, .fx-stat-foot { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fx-tile { border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        flex: none; }
+    .fx-stat-label { font-size: 14px; font-weight: 600; color: #2C2B4A; margin-top: 2px; }
+    .fx-stat-value { font-size: 30px; font-weight: 800; color: #1B1A3A; line-height: 1.15;
+        margin: 6px 0 4px; letter-spacing: -0.01em; }
+    .fx-stat-unit { font-size: 16px; font-weight: 700; margin-left: 6px; color: #2C2B4A; }
+    .fx-stat-foot { font-size: 12.5px; color: #4B4E68; display: flex; align-items: center; gap: 4px; }
+    .fx-stat-foot svg { flex: none; }
+    .fx-stat { margin: 4px 0 14px; }
+    .fx-welcome { margin-bottom: 10px; }
+    .fx-stat-foot.fx-up span { color: #146E36; font-weight: 600; }
+
+    /* Ring */
+    .fx-ring { position: relative; flex: none; }
+    .fx-ring svg { display: block; }
+    .fx-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; text-align: center; }
+    .fx-ring-big { font-size: 30px; font-weight: 800; color: #1B1A3A; line-height: 1; }
+    .fx-ring-mid { font-size: 19px; font-weight: 800; color: #1B1A3A; line-height: 1; }
+    .fx-ring-sub { font-size: 15px; font-weight: 700; color: #4B3BE0; margin-top: 6px; }
+
+    /* Job match rows */
+    .fx-job { display: flex; align-items: center; gap: 14px; padding: 12px 0;
+        border-bottom: 1px solid #F0F1F6; }
+    .fx-job:last-child { border-bottom: none; }
+    .fx-logo { border-radius: 12px; flex: none; display: flex; align-items: center;
+        justify-content: center; color: #FFFFFF; font-weight: 800; font-size: 18px; }
+    .fx-job-main { flex: 1; min-width: 0; }
+    .fx-job-title { font-weight: 700; color: #1B1A3A; font-size: 15px; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; }
+    .fx-job-co { color: #646882; font-size: 13px; margin-top: 2px; }
+    .fx-job-side { text-align: right; flex: none; }
+    .fx-job-match { color: #146E36; font-weight: 700; font-size: 13.5px; }
+    .fx-job-when { color: #646882; font-size: 12.5px; margin-top: 4px; }
+
+    /* Activity rows */
+    .fx-act { display: flex; align-items: center; gap: 12px; padding: 12px 0;
+        border-bottom: 1px solid #F0F1F6; font-size: 13.5px; color: #2C2B4A; }
+    .fx-act:last-child { border-bottom: none; }
+    .fx-act svg { flex: none; color: #4B4E68; }
+    .fx-act-text { flex: 1; min-width: 0; }
+    .fx-act-when { color: #646882; font-size: 12.5px; flex: none; }
+
+    /* Readiness card */
+    .fx-ready-copy { font-size: 15px; color: #2C2B4A; margin: 0 0 6px; }
+    .fx-ready-row { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        padding: 6px 0 4px; }
+
+    /* Progress bars */
+    .fx-progress { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(56px, 1fr) 40px;
+        align-items: center; gap: 14px; padding: 10px 0; font-size: 13.5px; }
+    .fx-progress-label { color: #2C2B4A; font-weight: 500; white-space: nowrap; overflow: hidden;
+        text-overflow: ellipsis; }
+    .fx-progress-track { background: #EEEFF5; border-radius: 99px; height: 7px; overflow: hidden; }
+    .fx-progress-fill { display: block; height: 100%; border-radius: 99px; }
+    .fx-progress-pct { color: #2C2B4A; font-weight: 600; text-align: right; }
+
+    /* Metric rows (LinkedIn) */
+    .fx-metric { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto 52px;
+        align-items: center; gap: 12px; padding: 9px 0; }
+    .fx-metric-label { color: #2C2B4A; font-size: 13.5px; font-weight: 500; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; }
+    .fx-metric-value { color: #1B1A3A; font-size: 18px; font-weight: 700; text-align: right; }
+    .fx-metric-delta { color: #146E36; font-size: 12.5px; font-weight: 600; display: flex;
+        align-items: center; gap: 3px; justify-content: flex-end; }
+
+    /* Funnel */
+    .fx-funnel { display: flex; flex-direction: column; gap: 10px; }
+    .fx-funnel-step { display: flex; align-items: center; justify-content: space-between;
+        gap: 8px; border-radius: 10px; padding: 11px 14px; font-size: 13.5px; white-space: nowrap; }
+    .fx-funnel-step span:first-child { color: #2C2B4A; font-weight: 500; }
+    .fx-funnel-step span:last-child { color: #1B1A3A; font-weight: 700; font-size: 17px; }
+    .fx-conv-label { font-size: 13px; color: #4B4E68; font-weight: 500; }
+    .fx-conv-value { font-size: 32px; font-weight: 800; color: #1B1A3A; letter-spacing: -0.01em;
+        line-height: 1.2; }
+    .fx-conv-note { font-size: 12.5px; color: #646882; }
+
+    /* Sidebar help card */
+    .fx-help { margin-top: 18px; border: 1px solid rgba(255, 255, 255, 0.10);
+        border-radius: 14px; padding: 14px 14px 6px; background: rgba(255, 255, 255, 0.03); }
+    section[data-testid="stSidebar"] .fx-help-title { color: #FFFFFF; font-weight: 700;
+        font-size: 14px; }
+    section[data-testid="stSidebar"] .fx-help-copy { color: #B9BCE0; font-size: 12.5px;
+        margin-top: 2px; }
+
+    @media (max-width: 640px) {
+        .fx-me > div:first-child { display: none; }
+        .fx-readiness { flex-wrap: wrap; }
+    }
+    @media (max-width: 1100px) {
+        .fx-readiness { justify-content: flex-start; }
+        .fx-welcome h1 { font-size: 24px; }
     }
 
     </style>
@@ -1213,24 +1394,18 @@ st.markdown(
 # SIDEBAR
 # --------------------------------------------------------------------------
 with st.sidebar:
+    # Exeliq integration: the brand mark is a hexagonal "F" in SVG rather than a letter in a
+    # box, and the member's name moved to the top bar, where the design puts it.
     st.markdown(
-        """
-        <div class="forge-brand">
-            <div class="forge-brand-badge">F</div>
-            <div>
-                <div class="forge-brand-name">FORGE AI&trade;</div>
-                <div class="forge-brand-sub">Career acceleration platform</div>
-            </div>
-        </div>
-        """,
+        '<div class="forge-brand"><div class="forge-brand-badge">'
+        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" '
+        'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<path d="M12 2.5 20.5 7.25v9.5L12 21.5 3.5 16.75v-9.5Z"/>'
+        '<path d="M14.5 8H10v8"/><path d="M10 12h3.5"/></svg></div>'
+        '<div><div class="forge-brand-name">FORGE AI</div>'
+        '<div class="forge-brand-sub">AI-powered career platform</div></div></div>',
         unsafe_allow_html=True,
     )
-
-    if st.session_state.authenticated:
-        prof = st.session_state.profile
-        st.markdown(f"**{prof.get('name', 'Member')}**")
-        st.caption(prof.get("role", "") or "Role not set")
-        st.divider()
 
     # Exeliq integration: show each account only the pages that apply to it. Previously every
     # account saw all twenty, so a recruiter was offered interview practice and a job seeker was
@@ -1247,17 +1422,21 @@ with st.sidebar:
         return not st.session_state.profile_complete
 
     for group in navigation.nav_for(_recruiter):
-        visible = [e for e in group.entries if not nav_locked(e.key)
+        # Exeliq integration: "Sign in" is noise to someone already signed in.
+        entries = [e for e in group.entries
+                   if not (e.key == "auth" and st.session_state.authenticated)]
+        visible = [e for e in entries if not nav_locked(e.key)
                    or e.key == st.session_state.active_page]
         if not visible:
             continue
         st.markdown(f'<div class="nav-group">{group.title}</div>', unsafe_allow_html=True)
-        for entry in group.entries:
+        for entry in entries:
             active = st.session_state.active_page == entry.key
             locked = nav_locked(entry.key)
             if st.button(
                 entry.label,
                 key=f"nav_{entry.key}",
+                icon=navigation.icon_for(entry.key),
                 use_container_width=True,
                 disabled=locked,
                 type="primary" if active else "secondary",
@@ -1265,16 +1444,78 @@ with st.sidebar:
                 st.session_state.active_page = entry.key
                 st.rerun()
 
-    st.divider()
+    st.markdown(
+        '<div class="fx-help"><div class="fx-help-title">Need help?</div>'
+        '<div class="fx-help-copy">Answers to common questions, or write to '
+        'support@forgeai.example</div></div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("Browse help", key="side_help", icon=":material/arrow_forward:",
+                 use_container_width=True):
+        st.session_state.active_page = "faqs"
+        st.rerun()
     if st.session_state.authenticated:
-        if st.button("Log out", use_container_width=True):
+        if st.button("Log out", key="side_logout", icon=":material/logout:",
+                     use_container_width=True):
             st.session_state.authenticated = False
             st.session_state.current_user_id = None
             st.session_state.active_page = "auth"
             st.rerun()
-    st.caption("Help & Support: support@forgeai.example")
 
 page = st.session_state.active_page
+
+
+# --------------------------------------------------------------------------
+# TOP BAR (Exeliq integration)
+# --------------------------------------------------------------------------
+def _go_search():
+    """Search from the top bar lands on the jobs page, filtered by what was typed."""
+    query = st.session_state.get("topbar_search", "").strip()
+    st.session_state.job_query = query
+    st.session_state.topbar_search = ""
+    if query:
+        st.session_state.active_page = "job_hunter"
+
+
+def _notifications() -> list[str]:
+    """What deserves a member's attention, from their own state. No invented alerts."""
+    items = [f"Job alert active: {a['role']} in {a['location']}"
+             for a in st.session_state.job_alerts]
+    for status in ("Offer", "Interview"):
+        n = sum(1 for s in st.session_state.applied_jobs.values() if s == status)
+        if n:
+            items.append(f"{n} application(s) at {status.lower()} stage")
+    items += [f"Post scheduled: {p['scheduled_at']}" for p in st.session_state.scheduled_posts]
+    return items
+
+
+if st.session_state.authenticated and page != "auth":
+    _me = st.session_state.profile
+    with st.container(key="fxtopbar", horizontal=True, vertical_alignment="center",
+                      wrap=False, gap="small"):
+        st.text_input(
+            "Search", key="topbar_search", on_change=_go_search, width="stretch",
+            placeholder="Search jobs, skills, companies...", label_visibility="collapsed",
+            icon=":material/search:",
+        )
+        _alerts = _notifications()
+        with st.popover(str(len(_alerts)) if _alerts else "", icon=":material/notifications:",
+                        help="Notifications"):
+            if _alerts:
+                for _a in _alerts:
+                    st.markdown(f"- {_a}")
+            else:
+                st.caption("Nothing new. Job alerts and interview updates show up here.")
+        if st.button("", key="topbar_help", icon=":material/help:", help="Help and FAQs"):
+            st.session_state.active_page = "faqs"
+            st.rerun()
+        st.markdown(
+            f'<div class="fx-me"><div style="text-align:right;">'
+            f'<div class="fx-me-name">{ui.escape(_me.get("name") or "Member")}</div>'
+            f'<div class="fx-me-role">{ui.escape(_me.get("role") or "Role not set")}</div>'
+            f'</div>{ui.avatar(_me.get("name") or "Member", 44)}</div>',
+            unsafe_allow_html=True, width="content",
+        )
 
 # --------------------------------------------------------------------------
 # PAGE: SIGN UP / LOGIN
@@ -1791,6 +2032,9 @@ The FORGE AI Team
 # PAGE: DASHBOARD OVERVIEW
 # --------------------------------------------------------------------------
 elif page == "dashboard":
+    # Exeliq integration: rebuilt to the approved dashboard design. Every figure still comes
+    # from the same state and helpers as before; only the presentation changed, plus two
+    # sections (learning, LinkedIn, funnel) that surface data other pages already compute.
     prof = st.session_state.profile
     first_name = prof.get("name", "there").split(" ")[0] if prof.get("name") else "there"
     is_corporate = prof.get("account_type") != "Individual / Job Seeker"
@@ -1805,98 +2049,199 @@ elif page == "dashboard":
     ])
     readiness = min(97, 62 + completeness * 7 + rng.randint(0, 5))
     readiness_label = "Strong" if readiness >= 80 else "Building" if readiness >= 60 else "Early Stage"
+    readiness_colour = "#178841" if readiness >= 80 else "#C26A05" if readiness >= 60 else "#C23636"
 
-    top1, top2 = st.columns([2.2, 1])
-    with top1:
-        st.markdown(
-            f'<div class="section-title">Welcome back, {first_name}! \U0001F44B</div>'
-            f'<div style="color:#6E748C;font-size:13px;margin-top:-8px;">'
-            f'{"Your talent command center" if is_corporate else "Your career command center"}</div>',
-            unsafe_allow_html=True,
-        )
-    with top2:
-        st.markdown(render_gauge(readiness, size=76, color="#178841", label=f"Overall Readiness · {readiness_label}"), unsafe_allow_html=True)
-
-    st.write("")
     n_applied = len(st.session_state.applied_jobs)
     n_saved = len(st.session_state.saved_jobs)
     n_interview = sum(1 for s in st.session_state.applied_jobs.values() if s in ("Interview", "Offer"))
+    n_offer = sum(1 for s in st.session_state.applied_jobs.values() if s == "Offer")
+    profile_views = 40 + completeness * 20 + rng.randint(0, 30)
+    new_jobs = rng.randint(2, 6)
+    views_delta = rng.randint(8, 25)
+    streak_days = 3 + completeness * 2
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">Jobs Found</div>'
-                     f'<div class="metric-value">{len(jobs)}</div><div style="font-size:11px;color:#1C8647;">+{rng.randint(2,6)} this week</div></div>', unsafe_allow_html=True)
-    with c2:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">Applications</div>'
-                     f'<div class="metric-value">{n_applied}</div><div style="font-size:11px;color:#1C8647;">{n_saved} saved</div></div>', unsafe_allow_html=True)
-    with c3:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">Interviews</div>'
-                     f'<div class="metric-value">{n_interview}</div><div style="font-size:11px;color:#6E748C;">this month</div></div>', unsafe_allow_html=True)
-    with c4:
-        profile_views = 40 + completeness * 20 + rng.randint(0, 30)
-        st.markdown(f'<div class="metric-card"><div class="metric-label">Profile Views</div>'
-                     f'<div class="metric-value">{profile_views}</div><div style="font-size:11px;color:#1C8647;">+{rng.randint(8,25)}% this week</div></div>', unsafe_allow_html=True)
-
-    st.write("")
-    left, right = st.columns([1.6, 1])
-    with left:
-        st.markdown("##### Top Job Matches")
-        for job in jobs[:3]:
-            match_cls = "match-high" if job["match_pct"] >= 85 else "match-mid" if job["match_pct"] >= 70 else "match-low"
-            st.markdown(
-                f"""
-                <div class="job-card" style="display:flex;align-items:center;justify-content:space-between;">
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <div class="company-badge">{job['company'][0]}</div>
-                        <div>
-                            <div style="font-weight:700;color:#24243B;font-size:13px;">{job['title']}</div>
-                            <div style="color:#6E748C;font-size:11px;">{job['company']} · {job['location']}</div>
-                        </div>
-                    </div>
-                    <span class="match-badge {match_cls}">{job['match_pct']}% Match</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        if st.button("View all jobs \u2192", key="dash_view_all"):
-            st.session_state.active_page = "job_hunter"
-            st.rerun()
-
-    with right:
-        st.markdown("##### Interview Readiness")
-        ready_roles = sum(1 for j in jobs if j["match_pct"] >= 80)
-        st.markdown(render_gauge(min(97, readiness), size=90, color="#5B4CF2"), unsafe_allow_html=True)
-        st.caption(f"You are interview-ready for {ready_roles} roles.")
-        if st.button("Start Simulation \u2192", use_container_width=True, key="dash_start_sim"):
-            st.session_state.active_page = "simulation" if "simulation" in [k for _, k in NAV_ITEMS] else "job_hunter"
-            st.rerun()
-
-    st.write("")
-    l2, r2 = st.columns([1.6, 1])
-    with l2:
-        st.markdown("##### Recent Activity")
-        activities = [
-            ("Resume optimized for target role", "2 hours ago"),
-            ("Completed a platform onboarding step", "5 hours ago"),
-            (f"New match found: {jobs[0]['title']} at {jobs[0]['company']}", "1 day ago"),
-            (f"Applied to {jobs[1]['title']}" if n_applied else "Profile created", "1 day ago"),
-        ]
-        for text, when in activities:
-            st.markdown(
-                f'<div style="display:flex;justify-content:space-between;padding:7px 0;'
-                f'border-bottom:1px solid #ECEEF6;font-size:12px;color:#5A5E73;">'
-                f'<span>{text}</span><span style="color:#6E748C;">{when}</span></div>',
-                unsafe_allow_html=True,
-            )
-    with r2:
-        st.markdown("##### Learning Streak")
-        streak_days = 3 + completeness * 2
-        st.markdown(f'<div style="font-size:26px;font-weight:700;color:#24243B;">{streak_days} <span style="font-size:13px;color:#6E748C;font-weight:400;">days in a row</span></div>', unsafe_allow_html=True)
-        dots_html = "".join(
-            f'<span class="streak-dot {"streak-on" if i < min(7, streak_days) else "streak-off"}">{d}</span>'
-            for i, d in enumerate(["M", "T", "W", "T", "F", "S", "S"])
+    # ---- Welcome and overall readiness ----
+    w_left, w_right = st.columns([1.5, 1], vertical_alignment="center")
+    with w_left:
+        st.markdown(
+            f'<div class="fx-welcome"><h1>Welcome back, {ui.escape(first_name)}! \U0001F44B</h1>'
+            f'<p>{"Your talent command center" if is_corporate else "Your career command center"}'
+            f"</p></div>",
+            unsafe_allow_html=True,
         )
-        st.markdown(f'<div style="margin-top:8px;">{dots_html}</div>', unsafe_allow_html=True)
+    with w_right:
+        st.markdown(
+            '<div class="fx-readiness"><div class="fx-readiness-label">Overall Readiness Score</div>'
+            + ui.ring(readiness / 100, size=92, stroke=9, color=readiness_colour, track="#E6F4EC",
+                      center=f'<span class="fx-ring-mid fx-num">{readiness}%</span>',
+                      label=f"Overall readiness {readiness} percent, {readiness_label}")
+            + f'<div><div class="fx-readiness-state" style="color:{readiness_colour};">'
+            f'{readiness_label}</div><div class="fx-readiness-hint">'
+            f"From profile completeness</div></div></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ---- Five stat tiles ----
+    stats = [
+        ("Jobs Found", str(len(jobs)), f"{new_jobs} this week", "briefcase", "indigo", "", True),
+        ("Applications", str(n_applied), f"{n_saved} saved", "file-check", "green", "", False),
+        ("Interviews", str(n_interview), "this month", "user", "violet", "", False),
+        ("Profile Views", str(profile_views), f"{views_delta}% this week", "eye", "amber", "", True),
+        ("Learning Streak", str(streak_days), "Keep it up!", "flame", "blue", "Days", False),
+    ]
+    for col, (label, value, foot, icon_name, tone, unit, up) in zip(st.columns(5), stats):
+        with col:
+            st.markdown(ui.stat_card(label, value, foot, icon_name, tone, unit=unit, trend_up=up),
+                        unsafe_allow_html=True)
+
+    def card_header(title: str, link: str | None, key: str, target: str | None = None):
+        """A card title with an optional right-aligned text link to the page behind it."""
+        # A horizontal container sizes each side to its content, so the title never truncates
+        # to make room for a fixed-ratio column the link does not need.
+        with st.container(horizontal=True, horizontal_alignment="distribute",
+                          vertical_alignment="center", wrap=False):
+            st.markdown(f'<div class="fx-card-title">{title}</div>', unsafe_allow_html=True,
+                        width="content")
+            if link and target and st.button(link, key=f"dash_{key}", type="tertiary"):
+                st.session_state.active_page = target
+                st.rerun()
+
+    # ---- Row: matches, activity, interview readiness ----
+    r1a, r1b, r1c = st.columns([1.15, 1.15, 1], gap="medium")
+    with r1a, st.container(key="fxcard_matches", height="stretch"):
+        card_header("Top Job Matches", "View all", "matches_all", "job_hunter")
+        rows = "".join(
+            f'<div class="fx-job">{ui.logo_tile(job["company"])}'
+            f'<div class="fx-job-main"><div class="fx-job-title">{ui.escape(job["title"])}</div>'
+            f'<div class="fx-job-co">{ui.escape(job["company"])}</div></div>'
+            f'<div class="fx-job-side"><div class="fx-job-match">{job["match_pct"]}% Match</div>'
+            f'<div class="fx-job-when">{ui.posted_ago(job["posted_days"])}</div></div></div>'
+            for job in jobs[:3]
+        )
+        st.markdown(rows, unsafe_allow_html=True)
+        with st.container(key="fxcenter_matches"):
+            if st.button("See all matched jobs", key="dash_view_all", type="tertiary",
+                         icon=":material/arrow_forward:"):
+                st.session_state.active_page = "job_hunter"
+                st.rerun()
+
+    with r1b, st.container(key="fxcard_activity", height="stretch"):
+        card_header("Recent Activity", None, "activity")
+        activities = []
+        if st.session_state.resume_versions_saved:
+            activities.append(("file-text", "Resume version saved for your target role", "2h ago"))
+        if st.session_state.simulation_results:
+            activities.append(("calendar-check",
+                               f"Completed {len(st.session_state.simulation_results)} interview "
+                               "simulation(s)", "5h ago"))
+        if st.session_state.scheduled_posts:
+            activities.append(("megaphone", "New LinkedIn post scheduled", "1d ago"))
+        if n_applied:
+            activities.append(("file-check", f"Applied to {n_applied} job(s)", "1d ago"))
+        activities.append(("sparkles",
+                           f"New match found: {jobs[0]['title']} at {jobs[0]['company']}", "1d ago"))
+        skills = prof.get("key_skills") or []
+        if skills:
+            shown = ", ".join(str(s) for s in skills[:2])
+            activities.append(("graduation-cap", f"Skills on your profile: {shown}", "2d ago"))
+        activities.append(("user-check", "Profile completed", "2d ago"))
+        st.markdown(
+            "".join(
+                f'<div class="fx-act">{ui.icon(name, 18)}<span class="fx-act-text">'
+                f"{ui.escape(text)}</span><span class=\"fx-act-when\">{when}</span></div>"
+                for name, text, when in activities[:5]
+            ),
+            unsafe_allow_html=True,
+        )
+
+    with r1c, st.container(key="fxcard-accent_ready", height="stretch"):
+        ready_roles = sum(1 for j in jobs if j["match_pct"] >= 80)
+        st.markdown('<div class="fx-card-title">Interview Readiness</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<p class="fx-ready-copy">You are interview ready for {ready_roles} of '
+            f"{len(jobs)} matched roles</p>"
+            '<div class="fx-ready-row">'
+            + ui.ring(ready_roles / len(jobs) if jobs else 0, size=136, stroke=12,
+                      color="#5B4CF2", track="#DCD8FF",
+                      center=f'<span class="fx-ring-big fx-num">{ready_roles}/{len(jobs)}</span>'
+                      '<span class="fx-ring-sub">Ready</span>',
+                      label=f"Interview ready for {ready_roles} of {len(jobs)} roles")
+            + '<svg width="104" height="104" viewBox="0 0 104 104" aria-hidden="true">'
+            '<circle cx="48" cy="56" r="40" fill="#5B4CF2" fill-opacity=".12"/>'
+            '<circle cx="48" cy="56" r="30" fill="#FFFFFF"/>'
+            '<circle cx="48" cy="56" r="22" fill="#7B6CFF"/>'
+            '<circle cx="48" cy="56" r="13" fill="#FFFFFF"/>'
+            '<circle cx="48" cy="56" r="6" fill="#5B4CF2"/>'
+            '<path d="M50 54 86 18" stroke="#2F21B8" stroke-width="4" stroke-linecap="round"/>'
+            '<path d="m80 12 10 2-2 10-6 2-6-6Z" fill="#7B6CFF"/></svg></div>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Start New Simulation", type="primary", key="dash_start_sim",
+                     icon=":material/arrow_forward:", icon_position="right"):
+            st.session_state.active_page = "simulation"
+            st.rerun()
+
+    # ---- Row: learning, LinkedIn, funnel ----
+    r2a, r2b, r2c = st.columns([1, 1, 1.15], gap="medium")
+    with r2a, st.container(key="fxcard_learning", height="stretch"):
+        card_header("Learning Progress", "Roadmap", "roadmap", "learning_dev")
+        tracked = list(dict.fromkeys(str(s).lower() for s in (prof.get("key_skills") or [])))[:5]
+        if tracked:
+            bars = []
+            for skill in tracked:
+                # Same default as the learning page, stored so both pages show one number.
+                pct = st.session_state.learning_progress.setdefault(skill, rng.randint(45, 90))
+                colour = "#178841" if pct >= 80 else "#3B82F6"
+                bars.append(ui.progress_bar(skill.title(), pct, colour))
+            st.markdown("".join(bars), unsafe_allow_html=True)
+        else:
+            st.caption("Add skills to your profile to track progress on them here.")
+
+    with r2b, st.container(key="fxcard_linkedin", height="stretch"):
+        card_header("LinkedIn Branding", "Calendar", "linkedin", "linkedin_branding")
+        li = get_linkedin_performance()
+        li_rows = [
+            ("pen-square", "violet", "Scheduled", str(len(st.session_state.scheduled_posts)), None),
+            ("eye", "blue", "Post Views", f"{li['views']:,}", li["views_delta"]),
+            ("heart", "rose", "Reactions", f"{li['reactions']:,}", li["reactions_delta"]),
+            ("trending-up", "amber", "Engagement", f"{li['engagement']:,}", li["engagement_delta"]),
+        ]
+        st.markdown(
+            "".join(
+                f'<div class="fx-metric">{ui.icon_tile(icon_name, tone, 38)}'
+                f'<span class="fx-metric-label">{label}</span>'
+                f'<span class="fx-metric-value fx-num">{value}</span>'
+                + (f'<span class="fx-metric-delta">{ui.icon("arrow-up", 12, "#146E36", 2.4)}'
+                   f"{delta}%</span>" if delta is not None else "<span></span>")
+                + "</div>"
+                for icon_name, tone, label, value, delta in li_rows
+            ),
+            unsafe_allow_html=True,
+        )
+
+    with r2c, st.container(key="fxcard_funnel", height="stretch"):
+        card_header("Application Funnel", "Details", "funnel", "success_tracking")
+        metrics = compute_success_metrics()
+        f_left, f_right = st.columns([1.1, 1], vertical_alignment="center")
+        steps = [("Jobs Found", len(jobs), "#ECEAFF", 100), ("Applied", n_applied, "#F1F1F7", 94),
+                 ("Interviews", n_interview, "#F1F1F7", 88), ("Offers", n_offer, "#F1F1F7", 82)]
+        with f_left:
+            st.markdown(
+                '<div class="fx-funnel">' + "".join(
+                    f'<div class="fx-funnel-step" style="background:{bg};width:{w}%;">'
+                    f'<span>{label}</span><span class="fx-num">{n}</span></div>'
+                    for label, n, bg, w in steps
+                ) + "</div>",
+                unsafe_allow_html=True,
+            )
+        with f_right:
+            st.markdown(
+                '<div class="fx-conv-label">Interview conversion</div>'
+                f'<div class="fx-conv-value fx-num">{metrics["conversion"]}%</div>'
+                '<div class="fx-conv-note">Interviews per application</div>'
+                + ui.sparkline(metrics["trend"], width=200, height=80),
+                unsafe_allow_html=True,
+            )
 
 # --------------------------------------------------------------------------
 # PAGE: JOB HUNTER AGENT
@@ -1925,13 +2270,25 @@ elif page == "job_hunter":
             st.session_state.job_alerts.append({"role": alert_role.strip(), "location": alert_loc})
             st.success(f"Alert created for '{alert_role.strip()}' in {alert_loc}.")
 
+    filtered = [j for j in jobs if (role_filter == "All Roles" or j["title"] == role_filter)
+                and (loc_filter == "All Locations" or j["location"] == loc_filter)]
+    # Exeliq integration: the top-bar search lands here. Matches title, company or a skill.
+    job_query = st.session_state.get("job_query", "").strip().lower()
+    if job_query:
+        filtered = [j for j in filtered if job_query in j["title"].lower()
+                    or job_query in j["company"].lower()
+                    or any(job_query in s for s in j["must_have"] + j["nice_have"])]
+        q_left, q_right = st.columns([4, 1], vertical_alignment="center")
+        q_left.caption(f"{len(filtered)} job(s) matching \u201c{st.session_state.job_query}\u201d")
+        if q_right.button("Clear search", key="clear_job_query"):
+            st.session_state.job_query = ""
+            st.rerun()
+    filtered.sort(key=lambda j: (-j["match_pct"]) if sort_by == "Best Match" else j["posted_days"])
+
     tab_opp, tab_saved, tab_applied, tab_alerts = st.tabs(
         ["Opportunities", "Saved Jobs", "Applied Jobs", "Job Alerts"]
     )
 
-    filtered = [j for j in jobs if (role_filter == "All Roles" or j["title"] == role_filter)
-                and (loc_filter == "All Locations" or j["location"] == loc_filter)]
-    filtered.sort(key=lambda j: (-j["match_pct"]) if sort_by == "Best Match" else j["posted_days"])
 
     def render_job_card(job, show_actions=True, ctx="opp"):
         match_cls = "match-high" if job["match_pct"] >= 85 else "match-mid" if job["match_pct"] >= 70 else "match-low"
